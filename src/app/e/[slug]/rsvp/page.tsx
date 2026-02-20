@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 interface RSVPPageProps {
   params: Promise<{ slug: string }>;
 }

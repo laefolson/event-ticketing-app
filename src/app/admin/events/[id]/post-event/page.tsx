@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 interface PostEventPageProps {
   params: Promise<{ id: string }>;
 }

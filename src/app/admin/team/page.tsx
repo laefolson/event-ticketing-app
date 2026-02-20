@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 export default async function TeamPage() {
   // TODO: Check user is admin (enforced by middleware)
   // TODO: Fetch all team members

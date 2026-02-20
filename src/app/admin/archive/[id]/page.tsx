@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 interface ArchiveDetailPageProps {
   params: Promise<{ id: string }>;
 }

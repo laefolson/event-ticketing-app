@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 interface AttendeesPageProps {
   params: Promise<{ id: string }>;
 }

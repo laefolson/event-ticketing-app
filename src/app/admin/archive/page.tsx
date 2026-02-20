@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 export default async function ArchivePage() {
   // TODO: Fetch all archived events
   // TODO: Render archived events list sorted by date descending

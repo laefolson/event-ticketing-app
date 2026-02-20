@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 interface TicketTiersPageProps {
   params: Promise<{ id: string }>;
 }

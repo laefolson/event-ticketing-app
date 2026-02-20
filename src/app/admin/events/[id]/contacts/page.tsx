@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 interface ContactsPageProps {
   params: Promise<{ id: string }>;
 }

@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import Link from 'next/link';
 import { CalendarDays, DollarSign, Ticket, TrendingUp, MapPin, ArrowRight, Plus } from 'lucide-react';
 import { format } from 'date-fns';

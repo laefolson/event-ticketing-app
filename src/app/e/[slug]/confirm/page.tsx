@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 interface ConfirmPageProps {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ session_id?: string; ticket_id?: string }>;
