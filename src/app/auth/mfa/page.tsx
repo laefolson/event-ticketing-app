@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ import {
 
 type MFAStep = 'loading' | 'enroll' | 'challenge';
 
-export default function MFAPage() {
+function MFAForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('redirectTo') ?? '/admin';
@@ -120,89 +120,103 @@ export default function MFAPage() {
 
   if (step === 'loading') {
     return (
-      <div className="flex min-h-screen items-center justify-center px-4">
-        <Card className="w-full max-w-sm">
-          <CardContent className="pt-6">
-            <p className="text-center text-muted-foreground">
-              Checking authentication...
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <Card className="w-full max-w-sm">
+        <CardContent className="pt-6">
+          <p className="text-center text-muted-foreground">
+            Checking authentication...
+          </p>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">
-            {step === 'enroll' ? 'Set Up MFA' : 'Verify MFA'}
-          </CardTitle>
-          <CardDescription>
-            {step === 'enroll'
-              ? 'Scan the QR code with your authenticator app'
-              : 'Enter the 6-digit code from your authenticator app'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {step === 'enroll' && (
-            <>
-              <div className="flex justify-center">
-                {/* QR code is returned as a data URI from Supabase */}
-                <img
-                  src={qrCode}
-                  alt="MFA QR Code"
-                  className="h-48 w-48 rounded-lg border"
-                />
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground text-center">
-                  Can't scan? Enter this key manually:
-                </p>
-                <p className="font-mono text-xs text-center break-all select-all bg-muted px-3 py-2 rounded-md">
-                  {secret}
-                </p>
-              </div>
-            </>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="mfa-code">Verification Code</Label>
+    <Card className="w-full max-w-sm">
+      <CardHeader className="text-center">
+        <CardTitle className="text-2xl">
+          {step === 'enroll' ? 'Set Up MFA' : 'Verify MFA'}
+        </CardTitle>
+        <CardDescription>
+          {step === 'enroll'
+            ? 'Scan the QR code with your authenticator app'
+            : 'Enter the 6-digit code from your authenticator app'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {step === 'enroll' && (
+          <>
             <div className="flex justify-center">
-              <InputOTP
-                maxLength={6}
-                value={code}
-                onChange={(value) => setCode(value)}
-                onComplete={verifyCode}
-              >
-                <InputOTPGroup>
-                  <InputOTPSlot index={0} />
-                  <InputOTPSlot index={1} />
-                  <InputOTPSlot index={2} />
-                  <InputOTPSlot index={3} />
-                  <InputOTPSlot index={4} />
-                  <InputOTPSlot index={5} />
-                </InputOTPGroup>
-              </InputOTP>
+              {/* QR code is returned as a data URI from Supabase */}
+              <img
+                src={qrCode}
+                alt="MFA QR Code"
+                className="h-48 w-48 rounded-lg border"
+              />
             </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground text-center">
+                Can&apos;t scan? Enter this key manually:
+              </p>
+              <p className="font-mono text-xs text-center break-all select-all bg-muted px-3 py-2 rounded-md">
+                {secret}
+              </p>
+            </div>
+          </>
+        )}
+
+        <div className="space-y-2">
+          <Label htmlFor="mfa-code">Verification Code</Label>
+          <div className="flex justify-center">
+            <InputOTP
+              maxLength={6}
+              value={code}
+              onChange={(value) => setCode(value)}
+              onComplete={verifyCode}
+            >
+              <InputOTPGroup>
+                <InputOTPSlot index={0} />
+                <InputOTPSlot index={1} />
+                <InputOTPSlot index={2} />
+                <InputOTPSlot index={3} />
+                <InputOTPSlot index={4} />
+                <InputOTPSlot index={5} />
+              </InputOTPGroup>
+            </InputOTP>
           </div>
+        </div>
 
-          {error && <p className="text-sm text-destructive text-center">{error}</p>}
+        {error && <p className="text-sm text-destructive text-center">{error}</p>}
 
-          <Button
-            onClick={verifyCode}
-            className="w-full"
-            disabled={isPending || code.length !== 6}
-          >
-            {isPending
-              ? 'Verifying...'
-              : step === 'enroll'
-                ? 'Complete Setup'
-                : 'Verify'}
-          </Button>
-        </CardContent>
-      </Card>
+        <Button
+          onClick={verifyCode}
+          className="w-full"
+          disabled={isPending || code.length !== 6}
+        >
+          {isPending
+            ? 'Verifying...'
+            : step === 'enroll'
+              ? 'Complete Setup'
+              : 'Verify'}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function MFAPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center px-4">
+      <Suspense
+        fallback={
+          <Card className="w-full max-w-sm">
+            <CardContent className="pt-6">
+              <p className="text-center text-muted-foreground">Loading...</p>
+            </CardContent>
+          </Card>
+        }
+      >
+        <MFAForm />
+      </Suspense>
     </div>
   );
 }
