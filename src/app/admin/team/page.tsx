@@ -1,16 +1,45 @@
 export const dynamic = 'force-dynamic';
 
+import { redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+import { TeamManager } from './team-manager';
+import type { TeamMember } from '@/types/database';
+
 export default async function TeamPage() {
-  // TODO: Check user is admin (enforced by middleware)
-  // TODO: Fetch all team members
-  // TODO: Render team members list
-  // TODO: Add "Invite Team Member" form
-  // TODO: Handle team member invitation and role assignment
-  
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    redirect('/auth/login?redirectTo=/admin/team');
+  }
+
+  // Verify caller is admin
+  const { data: currentMember } = await supabase
+    .from('team_members')
+    .select('role')
+    .eq('user_id', user.id)
+    .single();
+
+  if (!currentMember || currentMember.role !== 'admin') {
+    redirect('/admin');
+  }
+
+  // Fetch all team members
+  const { data: members } = await supabase
+    .from('team_members')
+    .select('*')
+    .order('invited_at', { ascending: true });
+
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6">Team Management</h1>
-      <p>Team members list and invitation coming soon...</p>
+      <TeamManager
+        members={(members ?? []) as TeamMember[]}
+        currentUserId={user.id}
+      />
     </div>
   );
 }
