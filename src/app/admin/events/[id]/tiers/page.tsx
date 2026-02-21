@@ -1,22 +1,39 @@
 export const dynamic = 'force-dynamic';
 
+import { notFound } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+import { TiersManager } from './tiers-manager';
+
 interface TicketTiersPageProps {
   params: Promise<{ id: string }>;
 }
 
 export default async function TicketTiersPage({ params }: TicketTiersPageProps) {
   const { id } = await params;
-  
-  // TODO: Fetch event and ticket tiers
-  // TODO: Render tiers list with edit/delete actions
-  // TODO: Add "Create Tier" form
-  // TODO: Handle Stripe Product/Price creation for paid tiers
-  
+
+  const supabase = await createClient();
+
+  const { data: event, error: eventError } = await supabase
+    .from('events')
+    .select('id, capacity')
+    .eq('id', id)
+    .single();
+
+  if (eventError || !event) {
+    notFound();
+  }
+
+  const { data: tiers } = await supabase
+    .from('ticket_tiers')
+    .select('*')
+    .eq('event_id', id)
+    .order('sort_order', { ascending: true });
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6">Manage Ticket Tiers</h1>
-      <p>Event ID: {id}</p>
-      <p>Ticket tiers management coming soon...</p>
-    </div>
+    <TiersManager
+      tiers={tiers ?? []}
+      eventId={event.id}
+      eventCapacity={event.capacity}
+    />
   );
 }
