@@ -1,23 +1,45 @@
 export const dynamic = 'force-dynamic';
 
+import { notFound } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+import { ContactsManager } from './contacts-manager';
+
 interface ContactsPageProps {
   params: Promise<{ id: string }>;
 }
 
 export default async function ContactsPage({ params }: ContactsPageProps) {
   const { id } = await params;
-  
-  // TODO: Fetch event and contacts
-  // TODO: Render CSV upload component
-  // TODO: Render contacts list with invitation status
-  // TODO: Add bulk channel configuration
-  // TODO: Add send invitation buttons (email/SMS)
-  
+
+  const supabase = await createClient();
+
+  const { data: event, error: eventError } = await supabase
+    .from('events')
+    .select('id, title')
+    .eq('id', id)
+    .single();
+
+  if (eventError || !event) {
+    notFound();
+  }
+
+  const { data: contacts } = await supabase
+    .from('contacts')
+    .select('*')
+    .eq('event_id', id)
+    .order('imported_at', { ascending: false });
+
+  const { data: csvImports } = await supabase
+    .from('csv_imports')
+    .select('*')
+    .eq('event_id', id)
+    .order('imported_at', { ascending: false });
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6">Manage Contacts</h1>
-      <p>Event ID: {id}</p>
-      <p>Contacts management and CSV upload coming soon...</p>
-    </div>
+    <ContactsManager
+      contacts={contacts ?? []}
+      csvImports={csvImports ?? []}
+      eventId={event.id}
+    />
   );
 }
