@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { TeamManager } from './team-manager';
 import type { TeamMember } from '@/types/database';
 
@@ -34,10 +35,24 @@ export default async function TeamPage() {
     .select('*')
     .order('invited_at', { ascending: true });
 
+  // Resolve real MFA status from Supabase Auth for each member
+  const adminClient = createAdminClient();
+  const membersWithMfa = await Promise.all(
+    ((members ?? []) as TeamMember[]).map(async (member) => {
+      const { data } = await adminClient.auth.admin.mfa.listFactors({
+        userId: member.user_id,
+      });
+      const hasVerifiedTotp = data?.factors?.some(
+        (f) => f.factor_type === 'totp' && f.status === 'verified'
+      ) ?? false;
+      return { ...member, mfa_enabled: hasVerifiedTotp };
+    })
+  );
+
   return (
     <div className="container mx-auto px-4 py-8">
       <TeamManager
-        members={(members ?? []) as TeamMember[]}
+        members={membersWithMfa}
         currentUserId={user.id}
       />
     </div>
