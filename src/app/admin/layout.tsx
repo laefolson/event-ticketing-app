@@ -2,13 +2,26 @@ import { ReactNode } from 'react';
 import Link from 'next/link';
 import { LogOut } from 'lucide-react';
 import { logout } from '@/app/auth/actions';
+import { createClient } from '@/lib/supabase/server';
 import { Button } from '@/components/ui/button';
 
 interface AdminLayoutProps {
   children: ReactNode;
 }
 
-export default function AdminLayout({ children }: AdminLayoutProps) {
+export default async function AdminLayout({ children }: AdminLayoutProps) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  let isAdmin = false;
+  if (user) {
+    const { data: member } = await supabase
+      .from('team_members')
+      .select('role')
+      .eq('user_id', user.id)
+      .single();
+    isAdmin = member?.role === 'admin';
+  }
   return (
     <div className="min-h-screen">
       <nav className="border-b">
@@ -30,18 +43,22 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               >
                 Archive
               </Link>
-              <Link
-                href="/admin/team"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Team
-              </Link>
-              <Link
-                href="/admin/settings"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Settings
-              </Link>
+              {isAdmin && (
+                <>
+                  <Link
+                    href="/admin/team"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Team
+                  </Link>
+                  <Link
+                    href="/admin/settings"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Settings
+                  </Link>
+                </>
+              )}
             </div>
           </div>
           <form action={logout}>
