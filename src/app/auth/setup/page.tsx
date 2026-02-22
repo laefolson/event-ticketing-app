@@ -25,26 +25,39 @@ export default function SetupPage() {
   const [isPending, setIsPending] = useState(false);
 
   useEffect(() => {
-    // Listen for the session from the invite hash fragment
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event) => {
-        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-          setReady(true);
+    async function initSession() {
+      // If hash fragment contains tokens, explicitly set the session
+      const hash = window.location.hash;
+      if (hash) {
+        const params = new URLSearchParams(hash.substring(1));
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+
+        if (accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+
+          if (!error) {
+            // Clear hash from URL so tokens aren't exposed
+            window.history.replaceState(null, '', window.location.pathname);
+            setReady(true);
+            return;
+          }
         }
       }
-    );
 
-    // Also check if there's already a session (e.g. navigated here directly)
-    supabase.auth.getSession().then(({ data: { session } }) => {
+      // Check for existing session (e.g. navigated here directly)
+      const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setReady(true);
-      } else if (!window.location.hash) {
-        // No hash tokens and no session — redirect to login
+      } else {
         router.replace('/auth/login');
       }
-    });
+    }
 
-    return () => subscription.unsubscribe();
+    initSession();
   }, [supabase, router]);
 
   async function handleSubmit(e: React.FormEvent) {
