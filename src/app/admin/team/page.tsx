@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { TeamManager } from './team-manager';
 import type { TeamMember } from '@/types/database';
 
@@ -34,18 +35,19 @@ export default async function TeamPage() {
     .select('*')
     .order('invited_at', { ascending: true });
 
-  // Resolve real MFA status for the current user from their session
-  const { data: factorsData } = await supabase.auth.mfa.listFactors();
-  const currentUserHasMfa = factorsData?.totp?.some(
-    (f) => f.status === 'verified'
-  ) ?? false;
-
-  const membersWithMfa = ((members ?? []) as TeamMember[]).map((member) => {
-    if (member.user_id === user.id) {
-      return { ...member, mfa_enabled: currentUserHasMfa };
-    }
-    return member;
-  });
+  // Resolve real MFA status from Supabase Auth for all members
+  const adminClient = createAdminClient();
+  const membersWithMfa = await Promise.all(
+    ((members ?? []) as TeamMember[]).map(async (member) => {
+      const { data } = await adminClient.auth.admin.mfa.listFactors({
+        userId: member.user_id,
+      });
+      const hasVerifiedTotp = data?.factors?.some(
+        (f) => f.factor_type === 'totp' && f.status === 'verified'
+      ) ?? false;
+      return { ...member, mfa_enabled: hasVerifiedTotp };
+    })
+  );
 
   return (
     <div className="container mx-auto px-4 py-8">

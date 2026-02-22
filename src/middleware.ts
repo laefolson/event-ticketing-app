@@ -66,7 +66,15 @@ export async function middleware(request: NextRequest) {
     );
 
     if (isRestrictedRoute) {
-      // TODO: Check team_members role — for now RLS enforces this
+      const { data: member } = await supabase
+        .from('team_members')
+        .select('role')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!member || member.role !== 'admin') {
+        return NextResponse.redirect(new URL('/admin', request.url));
+      }
     }
   }
 
