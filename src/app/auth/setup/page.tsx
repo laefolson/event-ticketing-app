@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -16,12 +16,36 @@ import {
 
 export default function SetupPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
 
+  const [ready, setReady] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+
+  useEffect(() => {
+    // Listen for the session from the invite hash fragment
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event) => {
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+          setReady(true);
+        }
+      }
+    );
+
+    // Also check if there's already a session (e.g. navigated here directly)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setReady(true);
+      } else if (!window.location.hash) {
+        // No hash tokens and no session — redirect to login
+        router.replace('/auth/login');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,6 +75,20 @@ export default function SetupPage() {
 
     // Password set — proceed to MFA enrollment
     router.replace('/auth/mfa');
+  }
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <Card className="w-full max-w-sm">
+          <CardContent className="pt-6">
+            <p className="text-center text-muted-foreground">
+              Setting up your account...
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
