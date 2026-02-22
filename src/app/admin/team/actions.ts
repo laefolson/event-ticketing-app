@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { ActionResponse } from '@/types/actions';
@@ -76,8 +77,12 @@ export async function inviteTeamMember(
     return { success: false, error: 'Server configuration error: admin client unavailable.' };
   }
 
+  const headersList = await headers();
+  const origin = headersList.get('origin') ?? '';
   const { data: inviteData, error: inviteError } =
-    await adminClient.auth.admin.inviteUserByEmail(parsed.data.email);
+    await adminClient.auth.admin.inviteUserByEmail(parsed.data.email, {
+      redirectTo: `${origin}/auth/callback?redirectTo=/auth/mfa`,
+    });
 
   if (inviteError) {
     return { success: false, error: inviteError.message };
