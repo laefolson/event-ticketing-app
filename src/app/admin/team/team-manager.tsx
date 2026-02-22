@@ -86,17 +86,21 @@ export function TeamManager({ members, currentUserId }: TeamManagerProps) {
     setInviteError(null);
     setInvitePending(true);
 
-    const result = await inviteTeamMember(inviteForm);
+    try {
+      const result = await inviteTeamMember(inviteForm);
 
-    setInvitePending(false);
+      if (!result.success) {
+        setInviteError(result.error ?? 'Something went wrong.');
+        return;
+      }
 
-    if (!result.success) {
-      setInviteError(result.error ?? 'Something went wrong.');
-      return;
+      setInviteOpen(false);
+      router.refresh();
+    } catch {
+      setInviteError('Something went wrong. Please try again.');
+    } finally {
+      setInvitePending(false);
     }
-
-    setInviteOpen(false);
-    router.refresh();
   }
 
   // Edit role handlers
@@ -113,17 +117,21 @@ export function TeamManager({ members, currentUserId }: TeamManagerProps) {
     setEditError(null);
     setEditPending(true);
 
-    const result = await updateTeamMemberRole(editingMember.id, editRole);
+    try {
+      const result = await updateTeamMemberRole(editingMember.id, editRole);
 
-    setEditPending(false);
+      if (!result.success) {
+        setEditError(result.error ?? 'Something went wrong.');
+        return;
+      }
 
-    if (!result.success) {
-      setEditError(result.error ?? 'Something went wrong.');
-      return;
+      setEditOpen(false);
+      router.refresh();
+    } catch {
+      setEditError('Something went wrong. Please try again.');
+    } finally {
+      setEditPending(false);
     }
-
-    setEditOpen(false);
-    router.refresh();
   }
 
   // Remove handlers
@@ -139,17 +147,21 @@ export function TeamManager({ members, currentUserId }: TeamManagerProps) {
     setRemoveError(null);
     setRemovePending(true);
 
-    const result = await removeTeamMember(removingMember.id);
+    try {
+      const result = await removeTeamMember(removingMember.id);
 
-    setRemovePending(false);
+      if (!result.success) {
+        setRemoveError(result.error ?? 'Something went wrong.');
+        return;
+      }
 
-    if (!result.success) {
-      setRemoveError(result.error ?? 'Something went wrong.');
-      return;
+      setRemoveOpen(false);
+      router.refresh();
+    } catch {
+      setRemoveError('Something went wrong. Please try again.');
+    } finally {
+      setRemovePending(false);
     }
-
-    setRemoveOpen(false);
-    router.refresh();
   }
 
   return (

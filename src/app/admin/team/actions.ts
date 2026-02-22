@@ -69,7 +69,13 @@ export async function inviteTeamMember(
   }
 
   // Create auth user + send invite email
-  const adminClient = createAdminClient();
+  let adminClient;
+  try {
+    adminClient = createAdminClient();
+  } catch {
+    return { success: false, error: 'Server configuration error: admin client unavailable.' };
+  }
+
   const { data: inviteData, error: inviteError } =
     await adminClient.auth.admin.inviteUserByEmail(parsed.data.email);
 
@@ -126,7 +132,13 @@ export async function updateTeamMemberRole(
     return { success: false, error: 'You cannot demote yourself.' };
   }
 
-  const adminClient = createAdminClient();
+  let adminClient;
+  try {
+    adminClient = createAdminClient();
+  } catch {
+    return { success: false, error: 'Server configuration error: admin client unavailable.' };
+  }
+
   const { error } = await adminClient
     .from('team_members')
     .update({ role })
@@ -164,7 +176,12 @@ export async function removeTeamMember(
     return { success: false, error: 'You cannot remove yourself.' };
   }
 
-  const adminClient = createAdminClient();
+  let adminClient;
+  try {
+    adminClient = createAdminClient();
+  } catch {
+    return { success: false, error: 'Server configuration error: admin client unavailable.' };
+  }
 
   // Delete team_members record first
   const { error: deleteError } = await adminClient
