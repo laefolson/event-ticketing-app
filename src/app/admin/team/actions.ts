@@ -81,7 +81,7 @@ export async function inviteTeamMember(
   const origin = headersList.get('origin') ?? '';
   const { data: inviteData, error: inviteError } =
     await adminClient.auth.admin.inviteUserByEmail(parsed.data.email, {
-      redirectTo: `${origin}/auth/callback?redirectTo=/auth/mfa`,
+      redirectTo: `${origin}/auth/callback`,
     });
 
   if (inviteError) {
