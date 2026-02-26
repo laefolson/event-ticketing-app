@@ -22,6 +22,8 @@ const updateEventSchema = z
     location_name: z.string().max(200).nullable(),
     location_address: z.string().max(500).nullable(),
     host_bio: z.string().max(2000).nullable(),
+    cover_image_url: z.string().url().nullable().optional(),
+    gallery_urls: z.array(z.string().url()).optional(),
     publish: z.boolean(),
   })
   .superRefine((data, ctx) => {
@@ -46,6 +48,8 @@ export type UpdateEventInput = {
   location_name: string | null;
   location_address: string | null;
   host_bio: string | null;
+  cover_image_url?: string | null;
+  gallery_urls?: string[];
   publish: boolean;
 };
 

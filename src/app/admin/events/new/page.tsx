@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { ImageUpload } from '@/components/image-upload';
 import { cn } from '@/lib/utils';
 import { createEvent } from './actions';
 import type { EventType } from '@/types/database';
@@ -41,6 +42,7 @@ interface FormData {
   location_name: string;
   location_address: string;
   host_bio: string;
+  cover_image_url: string | null;
 }
 
 const initialFormData: FormData = {
@@ -53,12 +55,15 @@ const initialFormData: FormData = {
   location_name: '',
   location_address: '',
   host_bio: '',
+  cover_image_url: null,
 };
 
 export default function NewEventPage() {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
   const [formData, setFormData] = useState<FormData>(initialFormData);
+  // Stable temp ID for image uploads before event is created
+  const tempEventId = useMemo(() => crypto.randomUUID(), []);
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const [submittingAs, setSubmittingAs] = useState<'draft' | 'publish' | null>(null);
@@ -112,6 +117,7 @@ export default function NewEventPage() {
       location_name: formData.location_name.trim() || null,
       location_address: formData.location_address.trim() || null,
       host_bio: formData.host_bio.trim() || null,
+      cover_image_url: formData.cover_image_url,
       publish,
     });
 
@@ -312,6 +318,17 @@ export default function NewEventPage() {
                   rows={3}
                   value={formData.host_bio}
                   onChange={(e) => updateField('host_bio', e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Cover Image</Label>
+                <ImageUpload
+                  eventId={tempEventId}
+                  type="cover"
+                  currentUrl={formData.cover_image_url}
+                  onUpload={(url) => updateField('cover_image_url', url)}
+                  onRemove={() => updateField('cover_image_url', null)}
                 />
               </div>
 

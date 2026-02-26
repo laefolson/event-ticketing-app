@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { ImageUpload } from '@/components/image-upload';
 import { updateEvent } from './actions';
 import type { Event, EventType } from '@/types/database';
 
@@ -44,6 +45,8 @@ interface FormData {
   location_name: string;
   location_address: string;
   host_bio: string;
+  cover_image_url: string | null;
+  gallery_urls: string[];
 }
 
 interface EditEventFormProps {
@@ -62,6 +65,8 @@ export function EditEventForm({ event }: EditEventFormProps) {
     location_name: event.location_name ?? '',
     location_address: event.location_address ?? '',
     host_bio: event.host_bio ?? '',
+    cover_image_url: event.cover_image_url ?? null,
+    gallery_urls: event.gallery_urls ?? [],
   });
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
@@ -117,6 +122,8 @@ export function EditEventForm({ event }: EditEventFormProps) {
       location_name: formData.location_name.trim() || null,
       location_address: formData.location_address.trim() || null,
       host_bio: formData.host_bio.trim() || null,
+      cover_image_url: formData.cover_image_url,
+      gallery_urls: formData.gallery_urls,
       publish,
     });
 
@@ -257,6 +264,50 @@ export function EditEventForm({ event }: EditEventFormProps) {
               value={formData.host_bio}
               onChange={(e) => updateField('host_bio', e.target.value)}
             />
+          </div>
+
+          {/* Cover Image */}
+          <div className="space-y-2">
+            <Label>Cover Image</Label>
+            <ImageUpload
+              eventId={event.id}
+              type="cover"
+              currentUrl={formData.cover_image_url}
+              onUpload={(url) => updateField('cover_image_url', url)}
+              onRemove={() => updateField('cover_image_url', null)}
+            />
+          </div>
+
+          {/* Gallery */}
+          <div className="space-y-2">
+            <Label>Gallery</Label>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {formData.gallery_urls.map((url, i) => (
+                <ImageUpload
+                  key={url}
+                  eventId={event.id}
+                  type="gallery"
+                  currentUrl={url}
+                  onUpload={() => {}}
+                  onRemove={() => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      gallery_urls: prev.gallery_urls.filter((_, j) => j !== i),
+                    }));
+                  }}
+                />
+              ))}
+              <ImageUpload
+                eventId={event.id}
+                type="gallery"
+                onUpload={(url) => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    gallery_urls: [...prev.gallery_urls, url],
+                  }));
+                }}
+              />
+            </div>
           </div>
 
           {error && (
