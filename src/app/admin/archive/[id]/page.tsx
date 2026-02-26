@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
@@ -194,6 +195,17 @@ export default async function ArchiveDetailPage({
           <ArrowLeft className="h-4 w-4" />
           Back to Archive
         </Link>
+
+        {event.cover_image_url && (
+          <div className="relative aspect-[16/9] w-full overflow-hidden rounded-lg mb-4">
+            <Image
+              src={event.cover_image_url}
+              alt={event.title}
+              fill
+              className="object-cover"
+            />
+          </div>
+        )}
 
         <div className="flex items-start justify-between">
           <div>
