@@ -11,6 +11,7 @@ interface EventTabsProps {
 const tabs = [
   { label: 'Details', href: '' },
   { label: 'Tiers', href: '/tiers' },
+  { label: 'FAQ', href: '/faq' },
   { label: 'Contacts', href: '/contacts' },
   { label: 'Attendees', href: '/attendees' },
   { label: 'Post-Event', href: '/post-event' },
