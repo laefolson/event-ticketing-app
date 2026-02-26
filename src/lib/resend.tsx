@@ -1,11 +1,13 @@
 import { Resend } from 'resend';
+import * as React from 'react';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 interface SendEmailInput {
   to: string;
   subject: string;
-  html: string;
+  html?: string;
+  react?: React.ReactElement;
 }
 
 interface SendEmailResult {
@@ -18,6 +20,7 @@ export async function sendEmail({
   to,
   subject,
   html,
+  react,
 }: SendEmailInput): Promise<SendEmailResult> {
   const from = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev';
 
@@ -26,7 +29,7 @@ export async function sendEmail({
       from,
       to,
       subject,
-      html,
+      ...(react ? { react } : { html: html ?? '' }),
     });
 
     if (error) {

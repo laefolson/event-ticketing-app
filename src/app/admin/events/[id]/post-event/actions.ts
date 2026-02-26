@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/resend';
 import { sendSms } from '@/lib/twilio';
+import { ThankYouEmail } from '@/emails/thank-you-email';
 import type { ActionResponse } from '@/types/actions';
 import type { InvitationChannel } from '@/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -234,7 +235,6 @@ export async function sendThankYouMessages(
   const failedDetails: string[] = [];
 
   const emailSubject = `Thank you for attending ${event.title}!`;
-  const emailHtml = emailBody.replace(/\n/g, '<br />');
   const smsBody = `Thank you for attending ${event.title}! Hope to see you next time.`;
 
   for (const recipient of recipients) {
@@ -244,7 +244,11 @@ export async function sendThankYouMessages(
       result = await sendEmail({
         to: recipient.email,
         subject: emailSubject,
-        html: emailHtml,
+        react: ThankYouEmail({
+          firstName: recipient.name.split(' ')[0] || 'Guest',
+          eventTitle: event.title,
+          customBody: emailBody,
+        }),
       });
     } else if (recipient.channel === 'sms' && recipient.phone) {
       result = await sendSms({
