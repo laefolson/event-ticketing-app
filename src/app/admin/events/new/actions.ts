@@ -2,8 +2,14 @@
 
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { stripe } from '@/lib/stripe';
 import type { ActionResponse } from '@/types/actions';
 import type { EventType } from '@/types/database';
+
+const faqPairSchema = z.object({
+  question: z.string().min(1, 'Question is required').max(500),
+  answer: z.string().min(1, 'Answer is required').max(2000),
+});
 
 const createEventSchema = z
   .object({
@@ -23,6 +29,8 @@ const createEventSchema = z
     location_address: z.string().max(500).nullable(),
     host_bio: z.string().max(2000).nullable(),
     cover_image_url: z.string().url().nullable().optional(),
+    gallery_urls: z.array(z.string().url()).optional(),
+    faq: z.array(faqPairSchema).optional(),
     publish: z.boolean(),
   })
   .superRefine((data, ctx) => {
@@ -48,6 +56,8 @@ export type CreateEventInput = {
   location_address: string | null;
   host_bio: string | null;
   cover_image_url?: string | null;
+  gallery_urls?: string[];
+  faq?: Array<{ question: string; answer: string }>;
   publish: boolean;
 };
 
@@ -89,6 +99,8 @@ export async function createEvent(
       ...fields,
       date_start: new Date(fields.date_start).toISOString(),
       date_end: new Date(fields.date_end).toISOString(),
+      gallery_urls: fields.gallery_urls ?? [],
+      faq: fields.faq ?? [],
       slug,
       status: publish ? 'published' : 'draft',
       is_published: publish,
@@ -108,4 +120,111 @@ export async function createEvent(
   }
 
   return { success: true, data: { eventId: data.id } };
+}
+
+// --- Tier creation for the wizard ---
+
+const tierInputSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(200),
+  description: z.string().max(1000).nullable(),
+  price_cents: z.number().int().min(0, 'Price must be 0 or more'),
+  quantity_total: z.number().int().min(1, 'Quantity must be at least 1'),
+  max_per_contact: z.number().int().min(1).nullable(),
+  sort_order: z.number().int().min(0),
+});
+
+export type WizardTierInput = z.infer<typeof tierInputSchema>;
+
+export async function createTiersForEvent(
+  eventId: string,
+  tiers: WizardTierInput[]
+): Promise<ActionResponse<void>> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return { success: false, error: 'You must be logged in.' };
+  }
+
+  const errors: string[] = [];
+
+  for (let i = 0; i < tiers.length; i++) {
+    const parsed = tierInputSchema.safeParse(tiers[i]);
+    if (!parsed.success) {
+      errors.push(`Tier ${i + 1}: ${parsed.error.issues[0].message}`);
+      continue;
+    }
+
+    let stripePriceId: string | null = null;
+
+    if (parsed.data.price_cents > 0) {
+      try {
+        const product = await stripe.products.create({
+          name: parsed.data.name,
+          metadata: { event_id: eventId },
+        });
+
+        const price = await stripe.prices.create({
+          product: product.id,
+          unit_amount: parsed.data.price_cents,
+          currency: 'usd',
+        });
+
+        stripePriceId = price.id;
+      } catch (err) {
+        console.error(`Failed to create Stripe product/price for tier ${i + 1}:`, err);
+        errors.push(`Tier ${i + 1} ("${parsed.data.name}"): Failed to set up payment.`);
+        continue;
+      }
+    }
+
+    const { error } = await supabase.from('ticket_tiers').insert({
+      event_id: eventId,
+      ...parsed.data,
+      stripe_price_id: stripePriceId,
+    });
+
+    if (error) {
+      // If Stripe price was created but DB insert failed, archive it
+      if (stripePriceId) {
+        try {
+          const priceObj = await stripe.prices.retrieve(stripePriceId);
+          await stripe.products.update(priceObj.product as string, { active: false });
+        } catch {
+          // Best-effort cleanup
+        }
+      }
+      errors.push(`Tier ${i + 1} ("${parsed.data.name}"): ${error.message}`);
+    }
+  }
+
+  if (errors.length > 0) {
+    return { success: false, error: errors.join('\n') };
+  }
+
+  return { success: true, data: undefined };
+}
+
+// --- Default host bio ---
+
+export async function getDefaultHostBio(): Promise<string | null> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'default_host_bio')
+    .single();
+
+  if (!data?.value) return null;
+
+  try {
+    return JSON.parse(data.value) as string;
+  } catch {
+    return data.value;
+  }
 }
