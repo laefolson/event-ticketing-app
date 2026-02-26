@@ -11,6 +11,9 @@ import {
   Search,
   FileSpreadsheet,
   CheckCircle2,
+  Send,
+  Mail,
+  MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -45,8 +48,9 @@ import {
   updateContact,
   deleteContact,
   importContacts,
+  sendInvitations,
 } from './actions';
-import type { ContactInput, CsvRow, ImportResult } from './actions';
+import type { ContactInput, CsvRow, ImportResult, InvitationScope, InvitationResult } from './actions';
 import type { Contact, CsvImport, InvitationChannel } from '@/types/database';
 import { format } from 'date-fns';
 
@@ -146,6 +150,13 @@ export function ContactsManager({
   const [csvError, setCsvError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Invitation dialog state
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [inviteScope, setInviteScope] = useState<InvitationScope>('uninvited');
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteResult, setInviteResult] = useState<InvitationResult | null>(null);
+  const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
 
   // Search & filter
   const [search, setSearch] = useState('');
@@ -325,6 +336,59 @@ export function ContactsManager({
     }
   }
 
+  // Invitation handlers
+  const inviteCounts = useMemo(() => {
+    let targetContacts: Contact[];
+    if (inviteScope === 'all') {
+      targetContacts = contacts.filter((c) => c.invitation_channel !== 'none');
+    } else if (inviteScope === 'uninvited') {
+      targetContacts = contacts.filter((c) => c.invitation_channel !== 'none' && !c.invited_at);
+    } else {
+      targetContacts = contacts.filter((c) => selectedContactIds.has(c.id) && c.invitation_channel !== 'none');
+    }
+    const emailCount = targetContacts.filter((c) => (c.invitation_channel === 'email' || c.invitation_channel === 'both') && c.email).length;
+    const smsCount = targetContacts.filter((c) => (c.invitation_channel === 'sms' || c.invitation_channel === 'both') && c.phone).length;
+    return { total: targetContacts.length, emailCount, smsCount };
+  }, [contacts, inviteScope, selectedContactIds]);
+
+  function openInviteDialog() {
+    setInviteScope('uninvited');
+    setInviteResult(null);
+    setInviteDialogOpen(true);
+  }
+
+  async function handleSendInvitations() {
+    setInviteSending(true);
+    const result = await sendInvitations({
+      eventId,
+      scope: inviteScope,
+      contactIds: inviteScope === 'selected' ? Array.from(selectedContactIds) : undefined,
+    });
+    setInviteSending(false);
+
+    if (result.success && result.data) {
+      setInviteResult(result.data);
+    } else {
+      setInviteResult({ sent: 0, failed: 0, failedDetails: [result.error ?? 'Failed to send invitations'] });
+    }
+  }
+
+  function closeInviteDialog() {
+    setInviteDialogOpen(false);
+    if (inviteResult) {
+      router.refresh();
+    }
+  }
+
+  function toggleContactSelection(id: string) {
+    setSelectedContactIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -336,6 +400,12 @@ export function ContactsManager({
           </span>
         </h2>
         <div className="flex gap-2">
+          {contacts.length > 0 && (
+            <Button variant="outline" onClick={openInviteDialog}>
+              <Send className="mr-2 h-4 w-4" />
+              Send Invitations
+            </Button>
+          )}
           <Button variant="outline" onClick={openCsvDialog}>
             <Upload className="mr-2 h-4 w-4" />
             Upload CSV
@@ -405,11 +475,25 @@ export function ContactsManager({
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <input
+                      type="checkbox"
+                      className="rounded border-stone-300"
+                      checked={filteredContacts.length > 0 && filteredContacts.every((c) => selectedContactIds.has(c.id))}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedContactIds(new Set(filteredContacts.map((c) => c.id)));
+                        } else {
+                          setSelectedContactIds(new Set());
+                        }
+                      }}
+                    />
+                  </TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Phone</TableHead>
                   <TableHead>Channel</TableHead>
-                  <TableHead>Source</TableHead>
+                  <TableHead>Invited</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -417,7 +501,7 @@ export function ContactsManager({
                 {filteredContacts.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="text-muted-foreground h-24 text-center"
                     >
                       No contacts match your search.
@@ -426,6 +510,14 @@ export function ContactsManager({
                 ) : (
                   filteredContacts.map((contact) => (
                     <TableRow key={contact.id}>
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          className="rounded border-stone-300"
+                          checked={selectedContactIds.has(contact.id)}
+                          onChange={() => toggleContactSelection(contact.id)}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">
                         {contact.first_name} {contact.last_name}
                       </TableCell>
@@ -437,11 +529,13 @@ export function ContactsManager({
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <span className="text-muted-foreground text-sm">
-                          {contact.csv_source
-                            ? `CSV: ${contact.csv_source}`
-                            : 'Manual'}
-                        </span>
+                        {contact.invited_at ? (
+                          <span className="text-muted-foreground text-xs">
+                            {format(new Date(contact.invited_at), 'MMM d, h:mm a')}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -611,6 +705,107 @@ export function ContactsManager({
               {isPending ? 'Saving...' : 'Save'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Invitations Dialog */}
+      <Dialog open={inviteDialogOpen} onOpenChange={(open) => {
+        if (!open) closeInviteDialog();
+        else setInviteDialogOpen(true);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {inviteResult ? 'Invitations Sent' : 'Send Invitations'}
+            </DialogTitle>
+            <DialogDescription>
+              {inviteResult
+                ? 'Here are the results of your invitation send.'
+                : 'Choose which contacts to send invitations to.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {inviteResult ? (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 rounded-lg border border-green-300 bg-green-50 p-4 dark:border-green-700 dark:bg-green-950">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium text-green-800 dark:text-green-200">
+                    {inviteResult.sent} message{inviteResult.sent !== 1 ? 's' : ''} sent
+                  </p>
+                  {inviteResult.failed > 0 && (
+                    <p className="text-red-700 dark:text-red-300">
+                      {inviteResult.failed} failed
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {inviteResult.failedDetails.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Failures:</p>
+                  <div className="max-h-40 overflow-y-auto rounded-md border p-3 text-xs">
+                    {inviteResult.failedDetails.map((d, i) => (
+                      <div key={i} className="text-muted-foreground py-0.5">
+                        {d}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button onClick={closeInviteDialog}>Done</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Who to invite</Label>
+                <Select value={inviteScope} onValueChange={(val) => setInviteScope(val as InvitationScope)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All contacts</SelectItem>
+                    <SelectItem value="uninvited">Un-invited only</SelectItem>
+                    <SelectItem value="selected">Selected contacts ({selectedContactIds.size})</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="rounded-md border p-4 space-y-2">
+                <p className="text-sm font-medium">Summary</p>
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5" />
+                    {inviteCounts.emailCount} email{inviteCounts.emailCount !== 1 ? 's' : ''}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    {inviteCounts.smsCount} SMS
+                  </span>
+                </div>
+                {inviteCounts.total === 0 && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    No contacts match this scope.
+                  </p>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={closeInviteDialog} disabled={inviteSending}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSendInvitations}
+                  disabled={inviteSending || inviteCounts.total === 0}
+                >
+                  {inviteSending ? 'Sending...' : `Send ${inviteCounts.emailCount + inviteCounts.smsCount} Invitations`}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

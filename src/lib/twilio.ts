@@ -20,16 +20,16 @@ export async function sendSms({
   to,
   body,
 }: SendSmsInput): Promise<SendSmsResult> {
-  const from = process.env.TWILIO_PHONE_NUMBER;
+  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
 
-  if (!from) {
-    return { success: false, error: 'TWILIO_PHONE_NUMBER is not configured' };
+  if (!messagingServiceSid) {
+    return { success: false, error: 'TWILIO_MESSAGING_SERVICE_SID is not configured' };
   }
 
   try {
     const message = await client.messages.create({
       to,
-      from,
+      messagingServiceSid,
       body,
     });
 

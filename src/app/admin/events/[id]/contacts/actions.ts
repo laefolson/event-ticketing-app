@@ -1,7 +1,11 @@
 'use server';
 
 import { z } from 'zod';
+import { format } from 'date-fns';
 import { createClient } from '@/lib/supabase/server';
+import { sendEmail } from '@/lib/resend';
+import { sendSms } from '@/lib/twilio';
+import { InvitationEmail } from '@/emails/invitation-email';
 import type { ActionResponse } from '@/types/actions';
 import type { InvitationChannel } from '@/types/database';
 
@@ -411,4 +415,161 @@ export async function updateContactChannel(
   }
 
   return { success: true };
+}
+
+// ── Invitation Sending ──────────────────────────────────────────────────
+
+export type InvitationScope = 'all' | 'uninvited' | 'selected';
+
+const invitationSchema = z.object({
+  eventId: z.string().uuid('Invalid event ID'),
+  scope: z.enum(['all', 'uninvited', 'selected']),
+  contactIds: z.array(z.string().uuid()).optional(),
+});
+
+export type SendInvitationsInput = z.infer<typeof invitationSchema>;
+
+export interface InvitationResult {
+  sent: number;
+  failed: number;
+  failedDetails: string[];
+}
+
+export async function sendInvitations(
+  input: SendInvitationsInput
+): Promise<ActionResponse<InvitationResult>> {
+  const parsed = invitationSchema.safeParse(input);
+  if (!parsed.success) {
+    const firstError = parsed.error.issues[0];
+    return { success: false, error: firstError.message };
+  }
+
+  const { eventId, scope, contactIds } = parsed.data;
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return { success: false, error: 'You must be logged in.' };
+  }
+
+  // Fetch event details for the template
+  const { data: event, error: eventError } = await supabase
+    .from('events')
+    .select('id, title, slug, date_start, location_name')
+    .eq('id', eventId)
+    .single();
+
+  if (eventError || !event) {
+    return { success: false, error: 'Event not found.' };
+  }
+
+  // Build contacts query based on scope
+  let query = supabase
+    .from('contacts')
+    .select('id, first_name, last_name, email, phone, invitation_channel')
+    .eq('event_id', eventId)
+    .neq('invitation_channel', 'none');
+
+  if (scope === 'uninvited') {
+    query = query.is('invited_at', null);
+  } else if (scope === 'selected') {
+    if (!contactIds || contactIds.length === 0) {
+      return { success: false, error: 'No contacts selected.' };
+    }
+    query = query.in('id', contactIds);
+  }
+
+  const { data: contacts, error: contactsError } = await query;
+
+  if (contactsError) {
+    return { success: false, error: contactsError.message };
+  }
+
+  if (!contacts || contacts.length === 0) {
+    return { success: false, error: 'No contacts to send invitations to.' };
+  }
+
+  const origin = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000';
+  const eventUrl = `${origin}/e/${event.slug}`;
+  const dateFormatted = format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
+  const emailSubject = `You're invited to ${event.title}`;
+  const smsBody = `You're invited to ${event.title} on ${format(new Date(event.date_start), 'MMM d, yyyy')}! View details & RSVP: ${eventUrl}`;
+
+  let sent = 0;
+  let failed = 0;
+  const failedDetails: string[] = [];
+
+  for (const contact of contacts) {
+    const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Guest';
+    const firstName = contact.first_name || 'Guest';
+    const channel = contact.invitation_channel as InvitationChannel;
+
+    // Send email if channel is email or both
+    if ((channel === 'email' || channel === 'both') && contact.email) {
+      const emailResult = await sendEmail({
+        to: contact.email,
+        subject: emailSubject,
+        react: InvitationEmail({
+          firstName,
+          eventTitle: event.title,
+          dateFormatted,
+          locationName: event.location_name,
+          eventUrl,
+        }),
+      });
+
+      await supabase.from('invitation_logs').insert({
+        event_id: eventId,
+        contact_id: contact.id,
+        message_type: 'invitation',
+        channel: 'email',
+        status: emailResult.success ? 'sent' : 'failed',
+        provider_message_id: emailResult.messageId ?? null,
+      });
+
+      if (emailResult.success) {
+        sent++;
+      } else {
+        failed++;
+        failedDetails.push(`${name} (email): ${emailResult.error}`);
+      }
+    }
+
+    // Send SMS if channel is sms or both
+    if ((channel === 'sms' || channel === 'both') && contact.phone) {
+      const smsResult = await sendSms({
+        to: contact.phone,
+        body: smsBody,
+      });
+
+      await supabase.from('invitation_logs').insert({
+        event_id: eventId,
+        contact_id: contact.id,
+        message_type: 'invitation',
+        channel: 'sms',
+        status: smsResult.success ? 'sent' : 'failed',
+        provider_message_id: smsResult.messageId ?? null,
+      });
+
+      if (smsResult.success) {
+        sent++;
+      } else {
+        failed++;
+        failedDetails.push(`${name} (sms): ${smsResult.error}`);
+      }
+    }
+
+    // Mark contact as invited
+    await supabase
+      .from('contacts')
+      .update({ invited_at: new Date().toISOString() })
+      .eq('id', contact.id);
+  }
+
+  return { success: true, data: { sent, failed, failedDetails } };
 }
