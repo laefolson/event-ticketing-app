@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { format } from 'date-fns';
 import { stripe } from '@/lib/stripe';
+import { sendEmail } from '@/lib/resend';
+import { TicketConfirmationEmail } from '@/emails/ticket-confirmation-email';
 import { createServiceClient } from '@/lib/supabase/service';
+
+function formatCents(cents: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(cents / 100);
+}
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -46,7 +56,7 @@ export async function POST(request: NextRequest) {
       // Check if ticket is already confirmed (idempotent)
       const { data: existing } = await supabase
         .from('tickets')
-        .select('id, status, tier_id, quantity')
+        .select('id, status, tier_id, quantity, attendee_name, attendee_email, event_id')
         .eq('id', ticketId)
         .single();
 
@@ -61,16 +71,19 @@ export async function POST(request: NextRequest) {
       }
 
       // Update ticket to confirmed
-      const { error: updateError } = await supabase
+      const amountPaidCents = session.amount_total ?? 0;
+      const { data: updatedTicket, error: updateError } = await supabase
         .from('tickets')
         .update({
           status: 'confirmed',
-          amount_paid_cents: session.amount_total ?? 0,
+          amount_paid_cents: amountPaidCents,
           stripe_payment_intent_id: typeof session.payment_intent === 'string'
             ? session.payment_intent
             : null,
         })
-        .eq('id', ticketId);
+        .eq('id', ticketId)
+        .select('ticket_code')
+        .single();
 
       if (updateError) {
         console.error(`checkout.session.completed: failed to update ticket ${ticketId}:`, updateError.message);
@@ -80,7 +93,7 @@ export async function POST(request: NextRequest) {
       // Increment quantity_sold on the tier
       const { data: tier } = await supabase
         .from('ticket_tiers')
-        .select('id, quantity_sold')
+        .select('id, name, quantity_sold')
         .eq('id', existing.tier_id)
         .single();
 
@@ -92,6 +105,35 @@ export async function POST(request: NextRequest) {
 
         if (tierError) {
           console.error(`checkout.session.completed: failed to increment quantity_sold for tier ${tier.id}:`, tierError.message);
+        }
+      }
+
+      // Send ticket confirmation email (best-effort)
+      if (existing.attendee_email && updatedTicket?.ticket_code) {
+        const { data: eventData } = await supabase
+          .from('events')
+          .select('title, date_start, location_name')
+          .eq('id', existing.event_id)
+          .single();
+
+        if (eventData) {
+          const dateFormatted = format(new Date(eventData.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
+          sendEmail({
+            to: existing.attendee_email,
+            subject: `Tickets Confirmed: ${eventData.title}`,
+            react: TicketConfirmationEmail({
+              attendeeName: existing.attendee_name,
+              eventTitle: eventData.title,
+              dateFormatted,
+              locationName: eventData.location_name,
+              tierName: tier?.name ?? 'Ticket',
+              quantity: existing.quantity,
+              ticketCode: updatedTicket.ticket_code,
+              amountPaidFormatted: formatCents(amountPaidCents),
+            }),
+          }).catch((err) => {
+            console.error('Failed to send ticket confirmation email:', err);
+          });
         }
       }
 
@@ -112,7 +154,7 @@ export async function POST(request: NextRequest) {
 
       const { data: ticket } = await supabase
         .from('tickets')
-        .select('id, status')
+        .select('id, status, tier_id, quantity')
         .eq('stripe_payment_intent_id', paymentIntentId)
         .single();
 
@@ -135,6 +177,25 @@ export async function POST(request: NextRequest) {
         console.error(`charge.refunded: failed to update ticket ${ticket.id}:`, refundError.message);
       } else {
         console.log(`charge.refunded: ticket ${ticket.id} marked as refunded`);
+
+        // Decrement quantity_sold on the tier
+        const { data: tier } = await supabase
+          .from('ticket_tiers')
+          .select('id, quantity_sold')
+          .eq('id', ticket.tier_id)
+          .single();
+
+        if (tier) {
+          const newSold = Math.max(0, tier.quantity_sold - ticket.quantity);
+          const { error: tierError } = await supabase
+            .from('ticket_tiers')
+            .update({ quantity_sold: newSold })
+            .eq('id', tier.id);
+
+          if (tierError) {
+            console.error(`charge.refunded: failed to decrement quantity_sold for tier ${tier.id}:`, tierError.message);
+          }
+        }
       }
 
       break;

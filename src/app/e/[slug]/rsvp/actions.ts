@@ -1,8 +1,11 @@
 'use server';
 
 import { z } from 'zod';
+import { format } from 'date-fns';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
+import { sendEmail } from '@/lib/resend';
+import { RsvpConfirmationEmail } from '@/emails/rsvp-confirmation-email';
 import type { ActionResponse } from '@/types/actions';
 
 const rsvpSchema = z.object({
@@ -41,7 +44,7 @@ export async function submitRsvp(
   // Verify event exists, is published, and link is active
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, is_published, link_active')
+    .select('id, slug, title, date_start, location_name, is_published, link_active')
     .eq('id', event_id)
     .eq('slug', slug)
     .eq('is_published', true)
@@ -55,7 +58,7 @@ export async function submitRsvp(
   // Verify tier exists, belongs to event, and is free
   const { data: tier, error: tierError } = await supabase
     .from('ticket_tiers')
-    .select('id, price_cents, quantity_total, quantity_sold, max_per_contact')
+    .select('id, name, price_cents, quantity_total, quantity_sold, max_per_contact')
     .eq('id', tier_id)
     .eq('event_id', event_id)
     .single();
@@ -129,7 +132,7 @@ export async function submitRsvp(
       stripe_payment_intent_id: null,
       stripe_session_id: null,
     })
-    .select('id')
+    .select('id, ticket_code')
     .single();
 
   if (insertError) {
@@ -146,6 +149,26 @@ export async function submitRsvp(
   if (updateError) {
     // Ticket already inserted — log but don't fail the user
     console.error('Failed to increment quantity_sold:', updateError.message);
+  }
+
+  // Send confirmation email (best-effort)
+  if (attendee_email) {
+    const dateFormatted = format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
+    sendEmail({
+      to: attendee_email,
+      subject: `RSVP Confirmed: ${event.title}`,
+      react: RsvpConfirmationEmail({
+        attendeeName: attendee_name,
+        eventTitle: event.title,
+        dateFormatted,
+        locationName: event.location_name,
+        tierName: tier.name,
+        quantity,
+        ticketCode: ticket.ticket_code,
+      }),
+    }).catch((err) => {
+      console.error('Failed to send RSVP confirmation email:', err);
+    });
   }
 
   return { success: true, data: { ticketId: ticket.id } };
