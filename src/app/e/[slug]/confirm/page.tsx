@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { getEventBySlug, getTicketById } from '../queries';
+import { TicketCard } from './ticket-card';
 
 interface ConfirmPageProps {
   params: Promise<{ slug: string }>;
@@ -112,6 +113,16 @@ export default async function ConfirmPage({
           </div>
         </CardContent>
       </Card>
+
+      <TicketCard
+        eventTitle={event.title}
+        dateFormatted={format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a')}
+        locationName={event.location_name}
+        attendeeName={ticket.attendee_name}
+        tierName={ticket.tier_name}
+        quantity={ticket.quantity}
+        ticketCode={ticket.ticket_code}
+      />
     </div>
   );
 }
