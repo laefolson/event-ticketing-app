@@ -246,6 +246,12 @@ export async function importContacts(
   if (rows.length === 0) {
     return { success: false, error: 'CSV file is empty.' };
   }
+
+  const payloadSize = new Blob([JSON.stringify(rows)]).size;
+  if (payloadSize > 5 * 1024 * 1024) {
+    return { success: false, error: 'CSV data exceeds 5 MB limit.' };
+  }
+
   if (rows.length > 5000) {
     return { success: false, error: 'CSV file exceeds 5,000 row limit.' };
   }

@@ -255,9 +255,17 @@ export function ContactsManager({
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
-    setCsvFile(file);
     setCsvError(null);
     setImportResult(null);
+
+    if (file && file.size > 5 * 1024 * 1024) {
+      setCsvFile(null);
+      setCsvError('CSV file must be under 5 MB.');
+      e.target.value = '';
+      return;
+    }
+
+    setCsvFile(file);
   }
 
   async function handleImport() {
