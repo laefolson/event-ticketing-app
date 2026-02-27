@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { ImageUpload } from '@/components/image-upload';
 import { updateEvent } from './actions';
 import type { Event, EventType } from '@/types/database';
@@ -47,6 +48,7 @@ interface FormData {
   host_bio: string;
   cover_image_url: string | null;
   gallery_urls: string[];
+  social_sharing_enabled: boolean;
 }
 
 interface EditEventFormProps {
@@ -67,6 +69,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
     host_bio: event.host_bio ?? '',
     cover_image_url: event.cover_image_url ?? null,
     gallery_urls: event.gallery_urls ?? [],
+    social_sharing_enabled: event.social_sharing_enabled,
   });
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
@@ -124,6 +127,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
       host_bio: formData.host_bio.trim() || null,
       cover_image_url: formData.cover_image_url,
       gallery_urls: formData.gallery_urls,
+      social_sharing_enabled: formData.social_sharing_enabled,
       publish,
     });
 
@@ -308,6 +312,21 @@ export function EditEventForm({ event }: EditEventFormProps) {
                 }}
               />
             </div>
+          </div>
+
+          {/* Social Sharing */}
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="social_sharing_enabled">Enable social share buttons</Label>
+              <p className="text-muted-foreground text-sm">
+                Show share buttons on the public event page
+              </p>
+            </div>
+            <Switch
+              id="social_sharing_enabled"
+              checked={formData.social_sharing_enabled}
+              onCheckedChange={(checked) => updateField('social_sharing_enabled', checked)}
+            />
           </div>
 
           {error && (

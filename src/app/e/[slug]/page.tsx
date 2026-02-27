@@ -12,6 +12,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import { ShareButtons } from '@/components/share-buttons';
 import { getEventBySlug, getTiersForEvent } from './queries';
 import type { TicketTier } from '@/types/database';
 import type { Metadata } from 'next';
@@ -155,6 +156,14 @@ export default async function EventPage({ params }: EventPageProps) {
               </div>
             )}
           </div>
+          {event.social_sharing_enabled && (
+            <div className="mt-4">
+              <ShareButtons
+                url={`${process.env.NEXT_PUBLIC_SITE_URL}/e/${slug}`}
+                title={event.title}
+              />
+            </div>
+          )}
         </section>
 
         {/* Description */}

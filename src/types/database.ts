@@ -27,6 +27,7 @@ export interface Event {
   host_bio: string | null;
   faq: Array<{ question: string; answer: string }>;
   status: EventStatus;
+  social_sharing_enabled: boolean;
   link_active: boolean;
   archived_at: string | null;
   created_by: string;
