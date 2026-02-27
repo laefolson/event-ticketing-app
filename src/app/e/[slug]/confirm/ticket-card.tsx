@@ -13,6 +13,7 @@ interface TicketCardProps {
   tierName: string;
   quantity: number;
   ticketCode: string;
+  coverImageUrl: string | null;
 }
 
 export function TicketCard({
@@ -23,6 +24,7 @@ export function TicketCard({
   tierName,
   quantity,
   ticketCode,
+  coverImageUrl,
 }: TicketCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
@@ -55,8 +57,17 @@ export function TicketCard({
         ref={cardRef}
         className="relative overflow-hidden rounded-xl border border-stone-300 bg-stone-50 dark:border-stone-700 dark:bg-stone-900"
       >
-        {/* Top accent bar */}
-        <div className="h-2 bg-gradient-to-r from-stone-800 to-stone-600 dark:from-stone-300 dark:to-stone-500" />
+        {/* Cover image or accent bar */}
+        {coverImageUrl ? (
+          <img
+            src={coverImageUrl}
+            alt=""
+            crossOrigin="anonymous"
+            className="h-32 w-full object-cover"
+          />
+        ) : (
+          <div className="h-2 bg-gradient-to-r from-stone-800 to-stone-600 dark:from-stone-300 dark:to-stone-500" />
+        )}
 
         <div className="px-6 py-5 space-y-4">
           {/* Event title */}

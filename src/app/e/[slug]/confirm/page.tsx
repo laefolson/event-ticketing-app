@@ -122,6 +122,7 @@ export default async function ConfirmPage({
         tierName={ticket.tier_name}
         quantity={ticket.quantity}
         ticketCode={ticket.ticket_code}
+        coverImageUrl={event.cover_image_url}
       />
     </div>
   );
