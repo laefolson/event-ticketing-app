@@ -423,6 +423,49 @@ export async function updateContactChannel(
   return { success: true };
 }
 
+export async function bulkUpdateContactChannel(
+  eventId: string,
+  scope: 'all' | 'selected',
+  contactIds: string[],
+  channel: InvitationChannel
+): Promise<ActionResponse<{ updated: number }>> {
+  const validChannels: InvitationChannel[] = ['email', 'sms', 'both', 'none'];
+  if (!validChannels.includes(channel)) {
+    return { success: false, error: 'Invalid channel.' };
+  }
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return { success: false, error: 'You must be logged in.' };
+  }
+
+  let query = supabase
+    .from('contacts')
+    .update({ invitation_channel: channel })
+    .eq('event_id', eventId);
+
+  if (scope === 'selected') {
+    if (contactIds.length === 0) {
+      return { success: false, error: 'No contacts selected.' };
+    }
+    query = query.in('id', contactIds);
+  }
+
+  const { data, error } = await query.select('id');
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true, data: { updated: data?.length ?? 0 } };
+}
+
 // ── Invitation Sending ──────────────────────────────────────────────────
 
 export type InvitationScope = 'all' | 'uninvited' | 'selected';

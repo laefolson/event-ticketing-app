@@ -14,6 +14,7 @@ import {
   Send,
   Mail,
   MessageSquare,
+  Repeat2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -49,6 +50,7 @@ import {
   deleteContact,
   importContacts,
   sendInvitations,
+  bulkUpdateContactChannel,
 } from './actions';
 import type { ContactInput, CsvRow, ImportResult, InvitationScope, InvitationResult } from './actions';
 import type { Contact, CsvImport, InvitationChannel } from '@/types/database';
@@ -157,6 +159,13 @@ export function ContactsManager({
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteResult, setInviteResult] = useState<InvitationResult | null>(null);
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
+
+  // Channel reassignment dialog state
+  const [channelDialogOpen, setChannelDialogOpen] = useState(false);
+  const [channelScope, setChannelScope] = useState<'all' | 'selected'>('all');
+  const [channelTarget, setChannelTarget] = useState<InvitationChannel>('email');
+  const [channelUpdating, setChannelUpdating] = useState(false);
+  const [channelResult, setChannelResult] = useState<{ updated: number } | null>(null);
 
   // Search & filter
   const [search, setSearch] = useState('');
@@ -388,6 +397,43 @@ export function ContactsManager({
     }
   }
 
+  // Channel reassignment handlers
+  const channelPreviewCount = useMemo(() => {
+    if (channelScope === 'all') return contacts.length;
+    return selectedContactIds.size;
+  }, [contacts.length, channelScope, selectedContactIds.size]);
+
+  function openChannelDialog() {
+    setChannelScope('all');
+    setChannelTarget('email');
+    setChannelResult(null);
+    setChannelDialogOpen(true);
+  }
+
+  async function handleBulkChannelUpdate() {
+    setChannelUpdating(true);
+    const result = await bulkUpdateContactChannel(
+      eventId,
+      channelScope,
+      channelScope === 'selected' ? Array.from(selectedContactIds) : [],
+      channelTarget
+    );
+    setChannelUpdating(false);
+
+    if (result.success && result.data) {
+      setChannelResult(result.data);
+    } else {
+      setChannelResult({ updated: 0 });
+    }
+  }
+
+  function closeChannelDialog() {
+    setChannelDialogOpen(false);
+    if (channelResult) {
+      router.refresh();
+    }
+  }
+
   function toggleContactSelection(id: string) {
     setSelectedContactIds((prev) => {
       const next = new Set(prev);
@@ -409,10 +455,16 @@ export function ContactsManager({
         </h2>
         <div className="flex gap-2">
           {contacts.length > 0 && (
-            <Button variant="outline" onClick={openInviteDialog}>
-              <Send className="mr-2 h-4 w-4" />
-              Send Invitations
-            </Button>
+            <>
+              <Button variant="outline" onClick={openChannelDialog}>
+                <Repeat2 className="mr-2 h-4 w-4" />
+                Change Channel
+              </Button>
+              <Button variant="outline" onClick={openInviteDialog}>
+                <Send className="mr-2 h-4 w-4" />
+                Send Invitations
+              </Button>
+            </>
           )}
           <Button variant="outline" onClick={openCsvDialog}>
             <Upload className="mr-2 h-4 w-4" />
@@ -810,6 +862,91 @@ export function ContactsManager({
                   disabled={inviteSending || inviteCounts.total === 0}
                 >
                   {inviteSending ? 'Sending...' : `Send ${inviteCounts.emailCount + inviteCounts.smsCount} Invitations`}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Channel Dialog */}
+      <Dialog open={channelDialogOpen} onOpenChange={(open) => {
+        if (!open) closeChannelDialog();
+        else setChannelDialogOpen(true);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {channelResult ? 'Channel Updated' : 'Change Invitation Channel'}
+            </DialogTitle>
+            <DialogDescription>
+              {channelResult
+                ? 'The invitation channel has been updated.'
+                : 'Update the invitation channel for contacts.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {channelResult ? (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 rounded-lg border border-green-300 bg-green-50 p-4 dark:border-green-700 dark:bg-green-950">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
+                <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                  {channelResult.updated} contact{channelResult.updated !== 1 ? 's' : ''} updated
+                </p>
+              </div>
+              <DialogFooter>
+                <Button onClick={closeChannelDialog}>Done</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Scope</Label>
+                <Select value={channelScope} onValueChange={(val) => setChannelScope(val as 'all' | 'selected')}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All contacts</SelectItem>
+                    <SelectItem value="selected">Selected contacts ({selectedContactIds.size})</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>New channel</Label>
+                <Select value={channelTarget} onValueChange={(val) => setChannelTarget(val as InvitationChannel)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="sms">SMS</SelectItem>
+                    <SelectItem value="both">Both</SelectItem>
+                    <SelectItem value="none">None</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                This will update {channelPreviewCount} contact{channelPreviewCount !== 1 ? 's' : ''}.
+              </p>
+
+              {channelScope === 'selected' && selectedContactIds.size === 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  No contacts selected. Select contacts from the table first.
+                </p>
+              )}
+
+              <DialogFooter>
+                <Button variant="outline" onClick={closeChannelDialog} disabled={channelUpdating}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleBulkChannelUpdate}
+                  disabled={channelUpdating || channelPreviewCount === 0}
+                >
+                  {channelUpdating ? 'Updating...' : 'Update Channel'}
                 </Button>
               </DialogFooter>
             </div>
