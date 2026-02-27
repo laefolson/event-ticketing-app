@@ -236,6 +236,34 @@ export default async function EventPage({ params }: EventPageProps) {
           </section>
         )}
 
+        {/* Location / Map */}
+        {event.location_address && process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && (
+          <section className="border-b py-8">
+            <h2 className="mb-4 text-xl font-semibold">Location</h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex flex-col justify-center">
+                {event.location_name && (
+                  <p className="font-medium">{event.location_name}</p>
+                )}
+                <p className="text-muted-foreground mt-1 text-sm">
+                  {event.location_address}
+                </p>
+              </div>
+              <div className="aspect-[4/3] overflow-hidden rounded-lg">
+                <iframe
+                  title="Event location map"
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0 }}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  src={`https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&q=${encodeURIComponent(event.location_address)}`}
+                />
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Host bio */}
         {event.host_bio && (
           <section className="border-b py-8">
