@@ -46,7 +46,7 @@ export async function createWalkIn(
   // Verify tier belongs to this event
   const { data: tier, error: tierError } = await supabase
     .from('ticket_tiers')
-    .select('id, quantity_total, quantity_sold')
+    .select('id')
     .eq('id', parsed.data.tier_id)
     .eq('event_id', eventId)
     .single();
@@ -78,15 +78,12 @@ export async function createWalkIn(
     return { success: false, error: insertError.message };
   }
 
-  // Increment quantity_sold on the tier
-  // Note: read-then-write has a race condition; consider an RPC for atomic increment in the future
-  const { error: updateError } = await supabase
-    .from('ticket_tiers')
-    .update({ quantity_sold: tier.quantity_sold + parsed.data.quantity })
-    .eq('id', tier.id);
+  // Atomically increment quantity_sold on the tier
+  const { error: rpcError } = await supabase
+    .rpc('adjust_quantity_sold', { p_tier_id: tier.id, p_delta: parsed.data.quantity });
 
-  if (updateError) {
-    return { success: false, error: updateError.message };
+  if (rpcError) {
+    return { success: false, error: rpcError.message };
   }
 
   return { success: true, data: { ticketId: ticket.id } };

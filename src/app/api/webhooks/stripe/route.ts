@@ -90,26 +90,23 @@ export async function POST(request: NextRequest) {
         break;
       }
 
-      // Increment quantity_sold on the tier
-      const { data: tier } = await supabase
-        .from('ticket_tiers')
-        .select('id, name, quantity_sold')
-        .eq('id', existing.tier_id)
-        .single();
+      // Atomically increment quantity_sold on the tier
+      const { error: tierError } = await supabase
+        .rpc('adjust_quantity_sold', { p_tier_id: existing.tier_id, p_delta: existing.quantity });
 
-      if (tier) {
-        const { error: tierError } = await supabase
-          .from('ticket_tiers')
-          .update({ quantity_sold: tier.quantity_sold + existing.quantity })
-          .eq('id', tier.id);
-
-        if (tierError) {
-          console.error(`checkout.session.completed: failed to increment quantity_sold for tier ${tier.id}:`, tierError.message);
-        }
+      if (tierError) {
+        console.error(`checkout.session.completed: failed to increment quantity_sold for tier ${existing.tier_id}:`, tierError.message);
       }
 
       // Send ticket confirmation email (best-effort)
       if (existing.attendee_email && updatedTicket?.ticket_code) {
+        // Fetch tier name for the email
+        const { data: tier } = await supabase
+          .from('ticket_tiers')
+          .select('name')
+          .eq('id', existing.tier_id)
+          .single();
+
         const { data: eventData } = await supabase
           .from('events')
           .select('title, date_start, location_name')
@@ -178,24 +175,54 @@ export async function POST(request: NextRequest) {
       } else {
         console.log(`charge.refunded: ticket ${ticket.id} marked as refunded`);
 
-        // Decrement quantity_sold on the tier
-        const { data: tier } = await supabase
-          .from('ticket_tiers')
-          .select('id, quantity_sold')
-          .eq('id', ticket.tier_id)
-          .single();
+        // Atomically decrement quantity_sold on the tier
+        const { error: tierError } = await supabase
+          .rpc('adjust_quantity_sold', { p_tier_id: ticket.tier_id, p_delta: -ticket.quantity });
 
-        if (tier) {
-          const newSold = Math.max(0, tier.quantity_sold - ticket.quantity);
-          const { error: tierError } = await supabase
-            .from('ticket_tiers')
-            .update({ quantity_sold: newSold })
-            .eq('id', tier.id);
-
-          if (tierError) {
-            console.error(`charge.refunded: failed to decrement quantity_sold for tier ${tier.id}:`, tierError.message);
-          }
+        if (tierError) {
+          console.error(`charge.refunded: failed to decrement quantity_sold for tier ${ticket.tier_id}:`, tierError.message);
         }
+      }
+
+      break;
+    }
+
+    case 'checkout.session.expired': {
+      const session = event.data.object as Stripe.Checkout.Session;
+      const ticketId = session.metadata?.ticket_id;
+
+      if (!ticketId) {
+        console.error('checkout.session.expired: missing ticket_id in metadata');
+        break;
+      }
+
+      // Only clean up tickets that are still pending
+      const { data: ticket } = await supabase
+        .from('tickets')
+        .select('id, status')
+        .eq('id', ticketId)
+        .single();
+
+      if (!ticket) {
+        console.log(`checkout.session.expired: ticket ${ticketId} not found`);
+        break;
+      }
+
+      if (ticket.status !== 'pending') {
+        console.log(`checkout.session.expired: ticket ${ticketId} is ${ticket.status}, skipping`);
+        break;
+      }
+
+      const { error: deleteError } = await supabase
+        .from('tickets')
+        .delete()
+        .eq('id', ticketId)
+        .eq('status', 'pending');
+
+      if (deleteError) {
+        console.error(`checkout.session.expired: failed to delete ticket ${ticketId}:`, deleteError.message);
+      } else {
+        console.log(`checkout.session.expired: deleted pending ticket ${ticketId}`);
       }
 
       break;

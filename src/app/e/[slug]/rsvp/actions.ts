@@ -139,16 +139,14 @@ export async function submitRsvp(
     return { success: false, error: 'Failed to create ticket. Please try again.' };
   }
 
-  // Increment quantity_sold via service role client (bypasses RLS)
+  // Atomically increment quantity_sold via RPC (bypasses RLS)
   const serviceClient = createServiceClient();
-  const { error: updateError } = await serviceClient
-    .from('ticket_tiers')
-    .update({ quantity_sold: tier.quantity_sold + quantity })
-    .eq('id', tier.id);
+  const { error: rpcError } = await serviceClient
+    .rpc('adjust_quantity_sold', { p_tier_id: tier.id, p_delta: quantity });
 
-  if (updateError) {
+  if (rpcError) {
     // Ticket already inserted — log but don't fail the user
-    console.error('Failed to increment quantity_sold:', updateError.message);
+    console.error('Failed to increment quantity_sold:', rpcError.message);
   }
 
   // Send confirmation email (best-effort)

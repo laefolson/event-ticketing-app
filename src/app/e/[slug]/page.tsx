@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
+import Markdown from 'react-markdown';
 import { CalendarDays, MapPin } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -170,9 +171,9 @@ export default async function EventPage({ params }: EventPageProps) {
         {event.description && (
           <section className="border-b py-8">
             <h2 className="mb-4 text-xl font-semibold">About This Event</h2>
-            <p className="text-muted-foreground whitespace-pre-line leading-relaxed">
-              {event.description}
-            </p>
+            <div className="prose prose-stone dark:prose-invert max-w-none text-muted-foreground leading-relaxed">
+              <Markdown>{event.description}</Markdown>
+            </div>
           </section>
         )}
 
