@@ -7,6 +7,7 @@ import { sendEmail } from '@/lib/resend';
 import { sendSms } from '@/lib/twilio';
 import { InvitationEmail } from '@/emails/invitation-email';
 import type { ActionResponse } from '@/types/actions';
+import { getVenueName } from '@/lib/settings';
 import type { InvitationChannel } from '@/types/database';
 
 const channelEnum = z.enum(['email', 'sms', 'both', 'none']);
@@ -543,6 +544,7 @@ export async function sendInvitations(
     return { success: false, error: 'No contacts to send invitations to.' };
   }
 
+  const venueName = await getVenueName();
   const origin = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000';
   const eventUrl = `${origin}/e/${event.slug}`;
   const dateFormatted = format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
@@ -569,6 +571,7 @@ export async function sendInvitations(
           dateFormatted,
           locationName: event.location_name,
           eventUrl,
+          venueName,
         }),
       });
 

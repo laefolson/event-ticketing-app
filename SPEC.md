@@ -223,7 +223,7 @@ RLS must be enabled on all tables.
 | `/admin/archive` | All archived events |
 | `/admin/archive/[id]` | Archived event detail — attendees, revenue, stats |
 | `/admin/team` | Manage team members (admin only) |
-| `/admin/settings` | Stripe, Twilio, Resend config; default host bio (admin only) |
+| `/admin/settings` | Venue name (used in email headers/footers), integration status (Stripe, Twilio, Resend — read-only, managed via env vars), default host bio (admin only) |
 
 ---
 
@@ -371,7 +371,7 @@ Optional — most events run on honor system; check-in is not required.
 
 ## 7. Message Templates
 
-All email templates built in **Resend React Email** format. Must be responsive and include farm name/logo in header.
+All email templates built in **Resend React Email** format. Must be responsive and include the configurable venue name (from `/admin/settings`) in header and footer.
 
 | Template | Channel | Trigger |
 |----------|---------|---------|

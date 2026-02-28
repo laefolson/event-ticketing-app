@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { sendEmail } from '@/lib/resend';
 import { RsvpConfirmationEmail } from '@/emails/rsvp-confirmation-email';
+import { getVenueName } from '@/lib/settings';
 import type { ActionResponse } from '@/types/actions';
 
 const rsvpSchema = z.object({
@@ -151,6 +152,7 @@ export async function submitRsvp(
 
   // Send confirmation email (best-effort)
   if (attendee_email) {
+    const venueName = await getVenueName();
     const dateFormatted = format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
     sendEmail({
       to: attendee_email,
@@ -163,6 +165,7 @@ export async function submitRsvp(
         tierName: tier.name,
         quantity,
         ticketCode: ticket.ticket_code,
+        venueName,
       }),
     }).catch((err) => {
       console.error('Failed to send RSVP confirmation email:', err);

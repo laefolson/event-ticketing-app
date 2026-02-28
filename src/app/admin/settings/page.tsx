@@ -41,7 +41,17 @@ export default async function SettingsPage() {
     connected: !!process.env[integration.envKey],
   }));
 
-  // Fetch default host bio
+  // Fetch venue name and default host bio
+  const { data: venueNameRow } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'venue_name')
+    .single();
+
+  const venueName: string = venueNameRow?.value
+    ? JSON.parse(venueNameRow.value as string)
+    : 'The Barn';
+
   const { data: hostBioRow } = await supabase
     .from('app_settings')
     .select('value')
@@ -79,17 +89,17 @@ export default async function SettingsPage() {
         </div>
       </section>
 
-      {/* Default Host Bio */}
+      {/* General Settings */}
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Default Host Bio</h2>
+        <h2 className="text-lg font-semibold">General</h2>
         <Card>
           <CardHeader>
             <CardDescription>
-              Pre-fills the host bio field when creating new events.
+              Configure your venue name and default host bio for new events.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <SettingsForm defaultHostBio={defaultHostBio} />
+            <SettingsForm venueName={venueName} defaultHostBio={defaultHostBio} />
           </CardContent>
         </Card>
       </section>

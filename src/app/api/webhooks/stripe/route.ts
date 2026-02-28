@@ -5,6 +5,7 @@ import { stripe } from '@/lib/stripe';
 import { sendEmail } from '@/lib/resend';
 import { TicketConfirmationEmail } from '@/emails/ticket-confirmation-email';
 import { createServiceClient } from '@/lib/supabase/service';
+import { getVenueName } from '@/lib/settings';
 
 function formatCents(cents: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -114,6 +115,7 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (eventData) {
+          const venueName = await getVenueName();
           const dateFormatted = format(new Date(eventData.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
           sendEmail({
             to: existing.attendee_email,
@@ -127,6 +129,7 @@ export async function POST(request: NextRequest) {
               quantity: existing.quantity,
               ticketCode: updatedTicket.ticket_code,
               amountPaidFormatted: formatCents(amountPaidCents),
+              venueName,
             }),
           }).catch((err) => {
             console.error('Failed to send ticket confirmation email:', err);

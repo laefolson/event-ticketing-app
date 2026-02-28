@@ -8,6 +8,7 @@ interface InvitationEmailProps {
   dateFormatted: string;
   locationName: string | null;
   eventUrl: string;
+  venueName: string;
 }
 
 export function InvitationEmail({
@@ -16,9 +17,10 @@ export function InvitationEmail({
   dateFormatted,
   locationName,
   eventUrl,
+  venueName,
 }: InvitationEmailProps) {
   return (
-    <BaseLayout preview={`You're invited to ${eventTitle}`}>
+    <BaseLayout preview={`You're invited to ${eventTitle}`} venueName={venueName}>
       <Text style={heading}>You&apos;re Invited!</Text>
       <Text style={paragraph}>Hi {firstName},</Text>
       <Text style={paragraph}>

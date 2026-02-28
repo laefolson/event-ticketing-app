@@ -6,6 +6,7 @@ import { sendEmail } from '@/lib/resend';
 import { sendSms } from '@/lib/twilio';
 import { ThankYouEmail } from '@/emails/thank-you-email';
 import type { ActionResponse } from '@/types/actions';
+import { getVenueName } from '@/lib/settings';
 import type { InvitationChannel } from '@/types/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -229,6 +230,7 @@ export async function sendThankYouMessages(
   }
 
   const recipients = await resolveRecipients(supabase, eventId);
+  const venueName = await getVenueName();
 
   let sent = 0;
   let failed = 0;
@@ -248,6 +250,7 @@ export async function sendThankYouMessages(
           firstName: recipient.name.split(' ')[0] || 'Guest',
           eventTitle: event.title,
           customBody: emailBody,
+          venueName,
         }),
       });
     } else if (recipient.channel === 'sms' && recipient.phone) {

@@ -3,17 +3,20 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { updateDefaultHostBio } from './actions';
+import { updateDefaultHostBio, updateVenueName } from './actions';
 
 interface SettingsFormProps {
+  venueName: string;
   defaultHostBio: string;
 }
 
-export function SettingsForm({ defaultHostBio }: SettingsFormProps) {
+export function SettingsForm({ venueName: initialVenueName, defaultHostBio }: SettingsFormProps) {
   const router = useRouter();
-  const [value, setValue] = useState(defaultHostBio);
+  const [venueNameValue, setVenueNameValue] = useState(initialVenueName);
+  const [hostBioValue, setHostBioValue] = useState(defaultHostBio);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -23,12 +26,20 @@ export function SettingsForm({ defaultHostBio }: SettingsFormProps) {
     setSuccess(false);
     setPending(true);
 
-    const result = await updateDefaultHostBio(value);
+    const [venueResult, bioResult] = await Promise.all([
+      updateVenueName(venueNameValue),
+      updateDefaultHostBio(hostBioValue),
+    ]);
 
     setPending(false);
 
-    if (!result.success) {
-      setError(result.error ?? 'Something went wrong.');
+    if (!venueResult.success) {
+      setError(venueResult.error ?? 'Failed to save venue name.');
+      return;
+    }
+
+    if (!bioResult.success) {
+      setError(bioResult.error ?? 'Failed to save host bio.');
       return;
     }
 
@@ -42,17 +53,31 @@ export function SettingsForm({ defaultHostBio }: SettingsFormProps) {
   return (
     <div className="space-y-4">
       <div className="space-y-2">
+        <Label htmlFor="venue-name">Venue Name</Label>
+        <Input
+          id="venue-name"
+          value={venueNameValue}
+          onChange={(e) => setVenueNameValue(e.target.value)}
+          placeholder="Enter your venue name..."
+          maxLength={200}
+        />
+        <p className="text-xs text-muted-foreground">
+          Used in email headers and footers. {venueNameValue.length}/200 characters
+        </p>
+      </div>
+
+      <div className="space-y-2">
         <Label htmlFor="host-bio">Default Host Bio</Label>
         <Textarea
           id="host-bio"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
+          value={hostBioValue}
+          onChange={(e) => setHostBioValue(e.target.value)}
           placeholder="Enter a default bio for event hosts..."
           rows={5}
           maxLength={2000}
         />
         <p className="text-xs text-muted-foreground">
-          {value.length}/2000 characters
+          Pre-fills the host bio field when creating new events. {hostBioValue.length}/2000 characters
         </p>
       </div>
 

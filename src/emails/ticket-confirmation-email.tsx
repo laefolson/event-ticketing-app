@@ -11,6 +11,7 @@ interface TicketConfirmationEmailProps {
   quantity: number;
   ticketCode: string;
   amountPaidFormatted: string;
+  venueName: string;
 }
 
 export function TicketConfirmationEmail({
@@ -22,9 +23,10 @@ export function TicketConfirmationEmail({
   quantity,
   ticketCode,
   amountPaidFormatted,
+  venueName,
 }: TicketConfirmationEmailProps) {
   return (
-    <BaseLayout preview={`Your tickets for ${eventTitle} are confirmed`}>
+    <BaseLayout preview={`Your tickets for ${eventTitle} are confirmed`} venueName={venueName}>
       <Text style={heading}>Payment Confirmed!</Text>
       <Text style={paragraph}>Hi {attendeeName},</Text>
       <Text style={paragraph}>

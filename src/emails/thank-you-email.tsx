@@ -6,15 +6,17 @@ interface ThankYouEmailProps {
   firstName: string;
   eventTitle: string;
   customBody: string;
+  venueName: string;
 }
 
 export function ThankYouEmail({
   firstName,
   eventTitle,
   customBody,
+  venueName,
 }: ThankYouEmailProps) {
   return (
-    <BaseLayout preview={`Thank you for attending ${eventTitle}`}>
+    <BaseLayout preview={`Thank you for attending ${eventTitle}`} venueName={venueName}>
       <Text style={heading}>Thank You!</Text>
       <Text style={paragraph}>Hi {firstName},</Text>
       {customBody.split('\n').map((line, i) => (

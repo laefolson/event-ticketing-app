@@ -13,12 +13,11 @@ import * as React from 'react';
 
 interface BaseLayoutProps {
   preview?: string;
+  venueName: string;
   children: React.ReactNode;
 }
 
-const FARM_NAME = 'The Barn';
-
-export function BaseLayout({ preview, children }: BaseLayoutProps) {
+export function BaseLayout({ preview, venueName, children }: BaseLayoutProps) {
   return (
     <Html lang="en">
       <Head />
@@ -26,13 +25,13 @@ export function BaseLayout({ preview, children }: BaseLayoutProps) {
       <Body style={body}>
         <Container style={container}>
           <Section style={header}>
-            <Text style={headerText}>{FARM_NAME}</Text>
+            <Text style={headerText}>{venueName}</Text>
           </Section>
           <Section style={content}>{children}</Section>
           <Hr style={divider} />
           <Section style={footer}>
             <Text style={footerText}>
-              &copy; {new Date().getFullYear()} {FARM_NAME}. All rights
+              &copy; {new Date().getFullYear()} {venueName}. All rights
               reserved.
             </Text>
           </Section>
