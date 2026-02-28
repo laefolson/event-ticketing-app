@@ -37,6 +37,39 @@ export async function createTier(
     return { success: false, error: 'You must be logged in.' };
   }
 
+  // Validate tier quantity against event capacity
+  const { data: event, error: eventError } = await supabase
+    .from('events')
+    .select('capacity')
+    .eq('id', eventId)
+    .single();
+
+  if (eventError || !event) {
+    return { success: false, error: 'Event not found.' };
+  }
+
+  if (event.capacity !== null) {
+    const { data: existingTiers, error: tiersError } = await supabase
+      .from('ticket_tiers')
+      .select('quantity_total')
+      .eq('event_id', eventId);
+
+    if (tiersError) {
+      return { success: false, error: 'Failed to check existing tiers.' };
+    }
+
+    const otherTiersTotal = (existingTiers ?? []).reduce((sum, t) => sum + t.quantity_total, 0);
+    const newTotal = otherTiersTotal + parsed.data.quantity_total;
+
+    if (newTotal > event.capacity) {
+      const available = event.capacity - otherTiersTotal;
+      return {
+        success: false,
+        error: `Total tier quantity (${newTotal}) would exceed event capacity (${event.capacity}). You have ${available} tickets available for this tier.`,
+      };
+    }
+  }
+
   // If paid tier, create Stripe product and price first
   let stripePriceId: string | null = null;
 
@@ -110,12 +143,47 @@ export async function updateTier(
   // Fetch existing tier to check if price changed
   const { data: existingTier, error: fetchError } = await supabase
     .from('ticket_tiers')
-    .select('price_cents, stripe_price_id')
+    .select('event_id, price_cents, stripe_price_id')
     .eq('id', tierId)
     .single();
 
   if (fetchError || !existingTier) {
     return { success: false, error: 'Tier not found.' };
+  }
+
+  // Validate tier quantity against event capacity
+  const { data: event, error: eventError } = await supabase
+    .from('events')
+    .select('capacity')
+    .eq('id', existingTier.event_id)
+    .single();
+
+  if (eventError || !event) {
+    return { success: false, error: 'Event not found.' };
+  }
+
+  if (event.capacity !== null) {
+    const { data: allTiers, error: tiersError } = await supabase
+      .from('ticket_tiers')
+      .select('id, quantity_total')
+      .eq('event_id', existingTier.event_id);
+
+    if (tiersError) {
+      return { success: false, error: 'Failed to check existing tiers.' };
+    }
+
+    const otherTiersTotal = (allTiers ?? [])
+      .filter((t) => t.id !== tierId)
+      .reduce((sum, t) => sum + t.quantity_total, 0);
+    const newTotal = otherTiersTotal + parsed.data.quantity_total;
+
+    if (newTotal > event.capacity) {
+      const available = event.capacity - otherTiersTotal;
+      return {
+        success: false,
+        error: `Total tier quantity (${newTotal}) would exceed event capacity (${event.capacity}). You have ${available} tickets available for this tier.`,
+      };
+    }
   }
 
   let newStripePriceId = existingTier.stripe_price_id;

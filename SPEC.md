@@ -251,6 +251,7 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
 - Each tier: name, price, quantity, description, `max_per_contact` (optional)
 - Paid tiers: auto-create Stripe Product + Price on save; store `stripe_price_id`
 - Free events: single RSVP tier, no Stripe
+- Tier `quantity_total` is validated against event `capacity` on create and update — total across all tiers cannot exceed capacity. Events with unlimited capacity (null) skip this validation.
 
 **Step 4 — Landing Page Content:** FAQ pairs (add/remove/reorder), preview mode
 

@@ -89,11 +89,30 @@ export function TiersManager({ tiers, eventId, eventCapacity }: TiersManagerProp
       return;
     }
 
+    const quantityTotal = parseInt(form.quantity_total, 10) || 0;
+
+    // Client-side capacity check
+    if (eventCapacity !== null) {
+      const otherTiersTotal = tiers
+        .filter((t) => t.id !== editingTier?.id)
+        .reduce((sum, t) => sum + t.quantity_total, 0);
+      const newTotal = otherTiersTotal + quantityTotal;
+
+      if (newTotal > eventCapacity) {
+        const available = eventCapacity - otherTiersTotal;
+        setError(
+          `Total tier quantity (${newTotal}) would exceed event capacity (${eventCapacity}). You have ${available} tickets available for this tier.`
+        );
+        setIsPending(false);
+        return;
+      }
+    }
+
     const input: TierInput = {
       name: form.name,
       description: form.description || null,
       price_cents: Math.round(priceDollars * 100),
-      quantity_total: parseInt(form.quantity_total, 10) || 0,
+      quantity_total: quantityTotal,
       max_per_contact: form.max_per_contact ? parseInt(form.max_per_contact, 10) : null,
       sort_order: parseInt(form.sort_order, 10) || 0,
     };
@@ -259,6 +278,17 @@ export function TiersManager({ tiers, eventId, eventCapacity }: TiersManagerProp
                 onChange={(e) => setForm({ ...form, quantity_total: e.target.value })}
                 placeholder="e.g. 50"
               />
+              {eventCapacity !== null && (() => {
+                const otherTiersTotal = tiers
+                  .filter((t) => t.id !== editingTier?.id)
+                  .reduce((sum, t) => sum + t.quantity_total, 0);
+                const available = eventCapacity - otherTiersTotal;
+                return (
+                  <p className="text-muted-foreground text-xs">
+                    {otherTiersTotal} of {eventCapacity} capacity allocated across other tiers. Max for this tier: {available}.
+                  </p>
+                );
+              })()}
             </div>
 
             <div className="space-y-2">
