@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { TimeInput } from '@/components/ui/time-input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -99,6 +100,14 @@ function formatPrice(cents: number): string {
 
 function formatEventType(type: string): string {
   return EVENT_TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type;
+}
+
+function formatTime12(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return hhmm;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${display}:${m.toString().padStart(2, '0')} ${period}`;
 }
 
 // --- Component ---
@@ -498,11 +507,10 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                   <Label htmlFor="time_start">
                     Start Time <span className="text-destructive">*</span>
                   </Label>
-                  <Input
+                  <TimeInput
                     id="time_start"
-                    type="time"
                     value={formData.time_start}
-                    onChange={(e) => updateField('time_start', e.target.value)}
+                    onChange={(val) => updateField('time_start', val)}
                   />
                 </div>
 
@@ -510,11 +518,10 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                   <Label htmlFor="time_end">
                     End Time <span className="text-destructive">*</span>
                   </Label>
-                  <Input
+                  <TimeInput
                     id="time_end"
-                    type="time"
                     value={formData.time_end}
-                    onChange={(e) => updateField('time_end', e.target.value)}
+                    onChange={(val) => updateField('time_end', val)}
                   />
                 </div>
               </div>
@@ -854,7 +861,7 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                   <span className="text-muted-foreground">Date</span>
                   <span>{formData.event_date ? new Date(formData.event_date + 'T00:00').toLocaleDateString() : '—'}</span>
                   <span className="text-muted-foreground">Time</span>
-                  <span>{formData.time_start && formData.time_end ? `${formData.time_start} – ${formData.time_end}` : '—'}</span>
+                  <span>{formData.time_start && formData.time_end ? `${formatTime12(formData.time_start)} – ${formatTime12(formData.time_end)}` : '—'}</span>
                   <span className="text-muted-foreground">Capacity</span>
                   <span>{formData.capacity || 'Unlimited'}</span>
                 </div>

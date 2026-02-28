@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { TimeInput } from '@/components/ui/time-input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -271,11 +272,10 @@ export function EditEventForm({ event }: EditEventFormProps) {
                 <Label htmlFor="time_start">
                   Start Time <span className="text-destructive">*</span>
                 </Label>
-                <Input
+                <TimeInput
                   id="time_start"
-                  type="time"
                   value={formData.time_start}
-                  onChange={(e) => updateField('time_start', e.target.value)}
+                  onChange={(val) => updateField('time_start', val)}
                 />
               </div>
 
@@ -283,11 +283,10 @@ export function EditEventForm({ event }: EditEventFormProps) {
                 <Label htmlFor="time_end">
                   End Time <span className="text-destructive">*</span>
                 </Label>
-                <Input
+                <TimeInput
                   id="time_end"
-                  type="time"
                   value={formData.time_end}
-                  onChange={(e) => updateField('time_end', e.target.value)}
+                  onChange={(val) => updateField('time_end', val)}
                 />
               </div>
             </div>
