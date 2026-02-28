@@ -13,6 +13,8 @@ function statusVariant(status: EventStatus) {
       return 'default' as const;
     case 'draft':
       return 'secondary' as const;
+    case 'cancelled':
+      return 'destructive' as const;
     case 'archived':
       return 'outline' as const;
   }

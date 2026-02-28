@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { EventStatus } from '@/types/database';
 
-const VALID_STATUSES: EventStatus[] = ['draft', 'published', 'archived'];
+const VALID_STATUSES: EventStatus[] = ['draft', 'published', 'cancelled', 'archived'];
 
 function statusVariant(status: EventStatus) {
   switch (status) {
@@ -17,6 +17,8 @@ function statusVariant(status: EventStatus) {
       return 'default' as const;
     case 'draft':
       return 'secondary' as const;
+    case 'cancelled':
+      return 'destructive' as const;
     case 'archived':
       return 'outline' as const;
   }
@@ -49,6 +51,7 @@ export default async function EventsPage({
     { label: 'All', href: '/admin/events', value: null },
     { label: 'Draft', href: '/admin/events?status=draft', value: 'draft' },
     { label: 'Published', href: '/admin/events?status=published', value: 'published' },
+    { label: 'Cancelled', href: '/admin/events?status=cancelled', value: 'cancelled' },
     { label: 'Archived', href: '/admin/events?status=archived', value: 'archived' },
   ];
 

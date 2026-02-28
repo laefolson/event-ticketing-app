@@ -2,7 +2,7 @@
 // Consider generating these from Supabase schema using supabase gen types
 
 export type EventType = 'dinner' | 'concert' | 'movie_night' | 'other';
-export type EventStatus = 'draft' | 'published' | 'archived';
+export type EventStatus = 'draft' | 'published' | 'cancelled' | 'archived';
 export type InvitationChannel = 'email' | 'sms' | 'both' | 'none';
 export type TicketStatus = 'pending' | 'confirmed' | 'checked_in' | 'cancelled' | 'refunded';
 export type TeamRole = 'admin' | 'helper';

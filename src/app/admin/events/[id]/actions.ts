@@ -95,3 +95,48 @@ export async function updateEvent(
 
   return { success: true, data: { eventId } };
 }
+
+export async function cancelEvent(
+  eventId: string
+): Promise<ActionResponse> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return { success: false, error: 'You must be logged in.' };
+  }
+
+  // Verify event exists and is draft or published
+  const { data: event, error: fetchError } = await supabase
+    .from('events')
+    .select('id, status')
+    .eq('id', eventId)
+    .single();
+
+  if (fetchError || !event) {
+    return { success: false, error: 'Event not found.' };
+  }
+
+  if (event.status !== 'draft' && event.status !== 'published') {
+    return { success: false, error: 'Only draft or published events can be cancelled.' };
+  }
+
+  const { error: updateError } = await supabase
+    .from('events')
+    .update({
+      status: 'cancelled',
+      is_published: false,
+      link_active: false,
+    })
+    .eq('id', eventId);
+
+  if (updateError) {
+    return { success: false, error: updateError.message };
+  }
+
+  return { success: true };
+}
