@@ -125,7 +125,3 @@ See `.env.local`. Public vars prefixed with `NEXT_PUBLIC_`. Server-only keys: `S
 **Completed**: Project setup, auth (login + TOTP MFA + middleware), admin layout + dashboard with live stats.
 
 **Most admin routes are placeholders** — events CRUD, tiers, contacts, attendees, post-event, archive, team, and settings pages have TODO comments but no implementation yet. Public event pages (`/e/[slug]/*`) are also placeholders.
-
-## Known Issues
-
-- `/auth/login` uses `useSearchParams` without a `<Suspense>` boundary — causes build failure at static generation (does not affect dev or runtime).
