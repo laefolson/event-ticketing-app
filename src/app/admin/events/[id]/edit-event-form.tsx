@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -150,6 +152,16 @@ export function EditEventForm({ event }: EditEventFormProps) {
         <CardDescription>
           Update the event information below.
         </CardDescription>
+        {event.status === 'published' && (
+          <Link
+            href={`/e/${event.slug}`}
+            target="_blank"
+            className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline w-fit"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            /e/{event.slug}
+          </Link>
+        )}
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
