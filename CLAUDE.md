@@ -42,7 +42,10 @@ src/
 │   │   ├── rsvp/           # RSVP form
 │   │   ├── checkout/       # Stripe Checkout
 │   │   └── confirm/        # Order confirmation
-│   └── api/webhooks/stripe/  # Stripe webhook handler
+│   └── api/webhooks/
+│       ├── stripe/           # Stripe payment webhook
+│       ├── resend/           # Resend email delivery status webhook
+│       └── twilio/           # Twilio SMS delivery status webhook
 ├── components/ui/          # shadcn/ui: badge, button, card, input, input-otp, label
 ├── lib/
 │   ├── supabase/server.ts  # createClient() — async, uses cookies()
@@ -115,7 +118,7 @@ npx tsc --noEmit  # Type check
 
 ## Environment Variables
 
-See `.env.local`. Public vars prefixed with `NEXT_PUBLIC_`. Server-only keys: `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_MESSAGING_SERVICE_SID`.
+See `.env.local`. Public vars prefixed with `NEXT_PUBLIC_`. Server-only keys: `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_MESSAGING_SERVICE_SID`.
 
 ## Current Status
 

@@ -208,6 +208,14 @@ RLS must be enabled on all tables.
 | `/e/[slug]/checkout` | Stripe Checkout redirect handler |
 | `/e/[slug]/confirm` | Post-purchase/RSVP confirmation with printable ticket card |
 
+### Webhooks (no auth — signature-verified)
+
+| Route | Description |
+|-------|-------------|
+| `/api/webhooks/stripe` | Stripe payment events (checkout completed, refund, session expired) |
+| `/api/webhooks/resend` | Resend email delivery status (delivered, bounced, complained) — Svix signature verification |
+| `/api/webhooks/twilio` | Twilio SMS delivery status (delivered, undelivered, failed) — Twilio request signature verification |
+
 ### Admin (auth + MFA required)
 
 | Route | Description |
@@ -318,6 +326,12 @@ From `/admin/events/[id]/contacts`:
 - Message: `"[first_name], you're invited to [Event Title] on [Date]! [URL]"`
 - Scope options: all eligible | un-invited only | selected contacts
 - Logged in `invitation_logs`
+
+**Delivery Status Tracking:**
+- `invitation_logs.status` starts as `sent` (or `failed` on immediate error)
+- Resend webhook updates email status to `delivered` or `bounced` (including spam complaints)
+- Twilio status callback updates SMS status to `delivered` or `failed`
+- Archive detail page uses delivery status for invitation stats
 
 ---
 
@@ -451,6 +465,7 @@ All email templates built in **Resend React Email** format. Must be responsive a
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Client-safe |
 | `RESEND_API_KEY` | |
 | `RESEND_FROM_EMAIL` | Verified sender, e.g. `events@yourdomain.com` |
+| `RESEND_WEBHOOK_SECRET` | Svix signing secret from Resend webhook config |
 | `TWILIO_ACCOUNT_SID` | |
 | `TWILIO_AUTH_TOKEN` | |
 | `TWILIO_MESSAGING_SERVICE_SID` | |
