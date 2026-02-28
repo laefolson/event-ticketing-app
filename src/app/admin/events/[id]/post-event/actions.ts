@@ -58,30 +58,39 @@ async function resolveRecipients(
       : ticket.contacts;
 
     if (contact) {
-      const key = `contact:${contact.id}`;
-      if (seen.has(key)) continue;
-
       const ch = contact.invitation_channel as InvitationChannel;
       if (ch === 'none') continue;
-
-      // For 'both', send email only to avoid duplicates
-      const channel: 'email' | 'sms' =
-        ch === 'sms' ? 'sms' : 'email';
-
-      const addr = channel === 'email' ? contact.email : contact.phone;
-      if (!addr) continue;
 
       const name = [contact.first_name, contact.last_name]
         .filter(Boolean)
         .join(' ') || 'Guest';
 
-      seen.set(key, {
-        contactId: contact.id,
-        name,
-        email: contact.email,
-        phone: contact.phone,
-        channel,
-      });
+      // Send to each channel matching the contact's invitation_channel
+      if ((ch === 'email' || ch === 'both') && contact.email) {
+        const key = `contact:${contact.id}:email`;
+        if (!seen.has(key)) {
+          seen.set(key, {
+            contactId: contact.id,
+            name,
+            email: contact.email,
+            phone: contact.phone,
+            channel: 'email',
+          });
+        }
+      }
+
+      if ((ch === 'sms' || ch === 'both') && contact.phone) {
+        const key = `contact:${contact.id}:sms`;
+        if (!seen.has(key)) {
+          seen.set(key, {
+            contactId: contact.id,
+            name,
+            email: contact.email,
+            phone: contact.phone,
+            channel: 'sms',
+          });
+        }
+      }
     } else {
       // Orphan ticket (walk-in) — prefer email, fallback SMS
       if (ticket.attendee_email) {
