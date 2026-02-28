@@ -100,9 +100,9 @@ RLS must be enabled on all tables.
 | gallery_urls | text[] | up to 6 additional images |
 | host_bio | text | pre-fillable from settings default |
 | faq | jsonb | array of `{question, answer}` |
-| status | enum | `draft \| published \| archived` |
+| status | enum | `draft \| published \| cancelled \| archived` |
 | social_sharing_enabled | boolean | default true; show/hide social share buttons on public page |
-| link_active | boolean | default true; set false on archive to 404 public page |
+| link_active | boolean | default true; set false on cancel/archive to 404 public page |
 | archived_at | timestamptz | set when admin manually archives |
 | created_by | uuid | fk → auth.users |
 | created_at | timestamptz | default now() |
@@ -222,7 +222,7 @@ RLS must be enabled on all tables.
 | Route | Description |
 |-------|-------------|
 | `/admin` | Dashboard — upcoming events, quick stats |
-| `/admin/events` | All events (draft, published, archived) |
+| `/admin/events` | All events (draft, published, cancelled, archived) |
 | `/admin/events/new` | Create event wizard |
 | `/admin/events/[id]` | Edit event details |
 | `/admin/events/[id]/tiers` | Manage ticket tiers, pricing, per-tier limits |
@@ -336,7 +336,20 @@ From `/admin/events/[id]/contacts`:
 
 ---
 
-### 6.6 Post-Event Actions
+### 6.6 Cancel Event
+
+Available on the Details tab (`/admin/events/[id]`) in a "Danger Zone" section when the event status is `draft` or `published`.
+
+- Admin clicks "Cancel Event" → confirmation dialog warns that the action cannot be undone
+- Sets: `status = cancelled`, `is_published = false`, `link_active = false`
+- Public landing page immediately returns 404
+- Event remains visible in admin (Details tab shows read-only view with cancelled banner; all form fields disabled)
+- Events list includes a "Cancelled" filter tab; cancelled events display a red `destructive` badge
+- **Not reversible** — unlike archiving, cancellation cannot be undone
+
+---
+
+### 6.7 Post-Event Actions
 
 Available at `/admin/events/[id]/post-event` once `date_end` has passed.
 
@@ -356,7 +369,7 @@ Available at `/admin/events/[id]/post-event` once `date_end` has passed.
 
 ---
 
-### 6.7 Attendee Check-In
+### 6.8 Attendee Check-In
 
 Optional — most events run on honor system; check-in is not required.
 
@@ -369,7 +382,7 @@ Optional — most events run on honor system; check-in is not required.
 
 ---
 
-### 6.8 Event Archive
+### 6.9 Event Archive
 
 - `/admin/archive`: all archived events, sorted by date descending
 - Per-event archive page shows:
@@ -513,4 +526,4 @@ All email templates built in **Resend React Email** format. Must be responsive a
 - **Storage buckets.** Use `event-assets` bucket. Images: public. CSVs: private, access via signed URLs only.
 - **Error shape.** All server actions return `{ success: boolean, data?: T, error?: string }`. Never throw to client.
 - **Post-event page.** Only render if `date_end < now()`. Show disabled/countdown state otherwise.
-- **Archiving.** The "Archive Event" action is the only thing that sets `link_active = false`. Do not auto-archive based on date without admin confirmation.
+- **Archiving & Cancellation.** The "Archive Event" and "Cancel Event" actions set `link_active = false`. Do not auto-archive or auto-cancel based on date without admin confirmation.
