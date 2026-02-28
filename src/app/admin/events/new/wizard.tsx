@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { Plus, Pencil, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -23,6 +23,14 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ImageUpload } from '@/components/image-upload';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { createEvent, createTiersForEvent } from './actions';
 import type { EventType } from '@/types/database';
@@ -121,6 +129,7 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const [submittingAs, setSubmittingAs] = useState<'draft' | 'publish' | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
   // Tier inline editing
   const [editingTierIdx, setEditingTierIdx] = useState<number | null>(null);
@@ -365,11 +374,22 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
 
   return (
     <div className="container mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">Create New Event</h1>
-        <p className="text-muted-foreground mt-1">
-          Fill in the details step by step.
-        </p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Create New Event</h1>
+          <p className="text-muted-foreground mt-1">
+            Fill in the details step by step.
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setCancelDialogOpen(true)}
+          disabled={isPending}
+        >
+          <X className="h-4 w-4 mr-1" />
+          Cancel
+        </Button>
       </div>
 
       {/* Step indicator */}
@@ -921,6 +941,29 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel event creation?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel? All progress will be lost and you&apos;ll
+              return to the events list.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelDialogOpen(false)}>
+              Continue editing
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => router.push('/admin/events')}
+            >
+              Discard & exit
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
