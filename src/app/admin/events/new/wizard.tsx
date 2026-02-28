@@ -56,8 +56,9 @@ interface FaqPair {
 interface FormData {
   title: string;
   event_type: EventType | '';
-  date_start: string;
-  date_end: string;
+  event_date: string;
+  time_start: string;
+  time_end: string;
   capacity: string;
   description: string;
   location_name: string;
@@ -114,8 +115,9 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
   const [formData, setFormData] = useState<FormData>({
     title: '',
     event_type: '',
-    date_start: '',
-    date_end: '',
+    event_date: '',
+    time_start: '',
+    time_end: '',
     capacity: '',
     description: '',
     location_name: '',
@@ -151,16 +153,20 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
       setError('Event type is required');
       return false;
     }
-    if (!formData.date_start) {
-      setError('Start date is required');
+    if (!formData.event_date) {
+      setError('Event date is required');
       return false;
     }
-    if (!formData.date_end) {
-      setError('End date is required');
+    if (!formData.time_start) {
+      setError('Start time is required');
       return false;
     }
-    if (new Date(formData.date_end) <= new Date(formData.date_start)) {
-      setError('End date must be after start date');
+    if (!formData.time_end) {
+      setError('End time is required');
+      return false;
+    }
+    if (formData.time_end <= formData.time_start) {
+      setError('End time must be after start time');
       return false;
     }
     if (formData.capacity && (isNaN(Number(formData.capacity)) || Number(formData.capacity) < 1)) {
@@ -314,11 +320,14 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
     setSubmittingAs(publish ? 'publish' : 'draft');
     setError(null);
 
+    const dateStart = `${formData.event_date}T${formData.time_start}`;
+    const dateEnd = `${formData.event_date}T${formData.time_end}`;
+
     const eventResult = await createEvent({
       title: formData.title.trim(),
       event_type: formData.event_type as EventType,
-      date_start: formData.date_start,
-      date_end: formData.date_end,
+      date_start: dateStart,
+      date_end: dateEnd,
       capacity: formData.capacity ? Number(formData.capacity) : null,
       description: formData.description.trim() || null,
       location_name: formData.location_name.trim() || null,
@@ -473,27 +482,41 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="date_start">
-                  Start Date & Time <span className="text-destructive">*</span>
+                <Label htmlFor="event_date">
+                  Event Date <span className="text-destructive">*</span>
                 </Label>
                 <Input
-                  id="date_start"
-                  type="datetime-local"
-                  value={formData.date_start}
-                  onChange={(e) => updateField('date_start', e.target.value)}
+                  id="event_date"
+                  type="date"
+                  value={formData.event_date}
+                  onChange={(e) => updateField('event_date', e.target.value)}
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="date_end">
-                  End Date & Time <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="date_end"
-                  type="datetime-local"
-                  value={formData.date_end}
-                  onChange={(e) => updateField('date_end', e.target.value)}
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="time_start">
+                    Start Time <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="time_start"
+                    type="time"
+                    value={formData.time_start}
+                    onChange={(e) => updateField('time_start', e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="time_end">
+                    End Time <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="time_end"
+                    type="time"
+                    value={formData.time_end}
+                    onChange={(e) => updateField('time_end', e.target.value)}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -828,10 +851,10 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                   <span>{formData.title}</span>
                   <span className="text-muted-foreground">Type</span>
                   <span>{formatEventType(formData.event_type)}</span>
-                  <span className="text-muted-foreground">Start</span>
-                  <span>{formData.date_start ? new Date(formData.date_start).toLocaleString() : '—'}</span>
-                  <span className="text-muted-foreground">End</span>
-                  <span>{formData.date_end ? new Date(formData.date_end).toLocaleString() : '—'}</span>
+                  <span className="text-muted-foreground">Date</span>
+                  <span>{formData.event_date ? new Date(formData.event_date + 'T00:00').toLocaleDateString() : '—'}</span>
+                  <span className="text-muted-foreground">Time</span>
+                  <span>{formData.time_start && formData.time_end ? `${formData.time_start} – ${formData.time_end}` : '—'}</span>
                   <span className="text-muted-foreground">Capacity</span>
                   <span>{formData.capacity || 'Unlimited'}</span>
                 </div>

@@ -34,15 +34,20 @@ const EVENT_TYPE_OPTIONS: { value: EventType; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-function toDatetimeLocal(iso: string): string {
-  return new Date(iso).toISOString().slice(0, 16);
+function toDatePart(iso: string): string {
+  return new Date(iso).toISOString().slice(0, 10);
+}
+
+function toTimePart(iso: string): string {
+  return new Date(iso).toISOString().slice(11, 16);
 }
 
 interface FormData {
   title: string;
   event_type: EventType;
-  date_start: string;
-  date_end: string;
+  event_date: string;
+  time_start: string;
+  time_end: string;
   capacity: string;
   description: string;
   location_name: string;
@@ -62,8 +67,9 @@ export function EditEventForm({ event }: EditEventFormProps) {
   const [formData, setFormData] = useState<FormData>({
     title: event.title,
     event_type: event.event_type,
-    date_start: toDatetimeLocal(event.date_start),
-    date_end: toDatetimeLocal(event.date_end),
+    event_date: toDatePart(event.date_start),
+    time_start: toTimePart(event.date_start),
+    time_end: toTimePart(event.date_end),
     capacity: event.capacity?.toString() ?? '',
     description: event.description ?? '',
     location_name: event.location_name ?? '',
@@ -91,16 +97,20 @@ export function EditEventForm({ event }: EditEventFormProps) {
       setError('Event type is required');
       return false;
     }
-    if (!formData.date_start) {
-      setError('Start date is required');
+    if (!formData.event_date) {
+      setError('Event date is required');
       return false;
     }
-    if (!formData.date_end) {
-      setError('End date is required');
+    if (!formData.time_start) {
+      setError('Start time is required');
       return false;
     }
-    if (new Date(formData.date_end) <= new Date(formData.date_start)) {
-      setError('End date must be after start date');
+    if (!formData.time_end) {
+      setError('End time is required');
+      return false;
+    }
+    if (formData.time_end <= formData.time_start) {
+      setError('End time must be after start time');
       return false;
     }
     if (formData.capacity && (isNaN(Number(formData.capacity)) || Number(formData.capacity) < 1)) {
@@ -117,11 +127,14 @@ export function EditEventForm({ event }: EditEventFormProps) {
     setSubmittingAs(publish ? 'publish' : 'draft');
     setError(null);
 
+    const dateStart = `${formData.event_date}T${formData.time_start}`;
+    const dateEnd = `${formData.event_date}T${formData.time_end}`;
+
     const result = await updateEvent(event.id, {
       title: formData.title.trim(),
       event_type: formData.event_type,
-      date_start: formData.date_start,
-      date_end: formData.date_end,
+      date_start: dateStart,
+      date_end: dateEnd,
       capacity: formData.capacity ? Number(formData.capacity) : null,
       description: formData.description.trim() || null,
       location_name: formData.location_name.trim() || null,
@@ -200,28 +213,40 @@ export function EditEventForm({ event }: EditEventFormProps) {
             </Select>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="event_date">
+              Event Date <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="event_date"
+              type="date"
+              value={formData.event_date}
+              onChange={(e) => updateField('event_date', e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="date_start">
-                Start Date & Time <span className="text-destructive">*</span>
+              <Label htmlFor="time_start">
+                Start Time <span className="text-destructive">*</span>
               </Label>
               <Input
-                id="date_start"
-                type="datetime-local"
-                value={formData.date_start}
-                onChange={(e) => updateField('date_start', e.target.value)}
+                id="time_start"
+                type="time"
+                value={formData.time_start}
+                onChange={(e) => updateField('time_start', e.target.value)}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="date_end">
-                End Date & Time <span className="text-destructive">*</span>
+              <Label htmlFor="time_end">
+                End Time <span className="text-destructive">*</span>
               </Label>
               <Input
-                id="date_end"
-                type="datetime-local"
-                value={formData.date_end}
-                onChange={(e) => updateField('date_end', e.target.value)}
+                id="time_end"
+                type="time"
+                value={formData.time_end}
+                onChange={(e) => updateField('time_end', e.target.value)}
               />
             </div>
           </div>
