@@ -190,6 +190,16 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
       setError('At least one ticket tier is required');
       return false;
     }
+    const cap = formData.capacity ? Number(formData.capacity) : null;
+    if (cap !== null) {
+      const totalQty = formData.tiers.reduce((sum, t) => sum + (parseInt(t.quantity_total, 10) || 0), 0);
+      if (totalQty > cap) {
+        setError(
+          `Total tier quantity (${totalQty}) exceeds event capacity (${cap}). Please reduce tier quantities or increase capacity.`
+        );
+        return false;
+      }
+    }
     return true;
   }
 
@@ -256,6 +266,22 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
     if (!qty || qty < 1) {
       setError('Quantity must be at least 1');
       return;
+    }
+
+    // Capacity enforcement
+    const cap = formData.capacity ? Number(formData.capacity) : null;
+    if (cap !== null) {
+      const otherTiersTotal = formData.tiers
+        .filter((_, i) => i !== editingTierIdx)
+        .reduce((sum, t) => sum + (parseInt(t.quantity_total, 10) || 0), 0);
+      const newTotal = otherTiersTotal + qty;
+      if (newTotal > cap) {
+        const available = cap - otherTiersTotal;
+        setError(
+          `Total tier quantity (${newTotal}) would exceed event capacity (${cap}). You have ${available} tickets available for this tier.`
+        );
+        return;
+      }
     }
 
     setError(null);
@@ -718,6 +744,18 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                         onChange={(e) => setTierForm({ ...tierForm, quantity_total: e.target.value })}
                         placeholder="e.g. 50"
                       />
+                      {formData.capacity && (() => {
+                        const cap = Number(formData.capacity);
+                        const otherTiersTotal = formData.tiers
+                          .filter((_, i) => i !== editingTierIdx)
+                          .reduce((sum, t) => sum + (parseInt(t.quantity_total, 10) || 0), 0);
+                        const available = cap - otherTiersTotal;
+                        return (
+                          <p className="text-muted-foreground text-xs">
+                            {otherTiersTotal} of {cap} capacity allocated across other tiers. Max for this tier: {available}.
+                          </p>
+                        );
+                      })()}
                     </div>
 
                     <div className="space-y-2">

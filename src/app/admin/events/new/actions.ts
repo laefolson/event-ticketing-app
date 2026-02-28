@@ -150,6 +150,27 @@ export async function createTiersForEvent(
     return { success: false, error: 'You must be logged in.' };
   }
 
+  // Capacity enforcement
+  const { data: event, error: eventError } = await supabase
+    .from('events')
+    .select('capacity')
+    .eq('id', eventId)
+    .single();
+
+  if (eventError || !event) {
+    return { success: false, error: 'Event not found.' };
+  }
+
+  if (event.capacity !== null) {
+    const totalQty = tiers.reduce((sum, t) => sum + (t.quantity_total ?? 0), 0);
+    if (totalQty > event.capacity) {
+      return {
+        success: false,
+        error: `Total tier quantity (${totalQty}) exceeds event capacity (${event.capacity}).`,
+      };
+    }
+  }
+
   const errors: string[] = [];
 
   for (let i = 0; i < tiers.length; i++) {
