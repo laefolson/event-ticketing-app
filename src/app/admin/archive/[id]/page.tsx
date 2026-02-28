@@ -27,6 +27,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ExportCsvButton } from './export-csv-button';
+import { DeleteEventButton } from './delete-event-button';
 import type { TicketStatus } from '@/types/database';
 
 function formatCents(cents: number): string {
@@ -456,6 +457,19 @@ export default async function ArchiveDetailPage({
           </CardContent>
         </Card>
       )}
+
+      {/* Danger Zone */}
+      <Card className="border-destructive">
+        <CardHeader>
+          <CardTitle className="text-destructive">Danger Zone</CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Permanently delete this event and all associated data.
+          </p>
+          <DeleteEventButton eventId={event.id} eventTitle={event.title} />
+        </CardContent>
+      </Card>
     </div>
   );
 }
