@@ -240,7 +240,7 @@ RLS must be enabled on all tables.
 
 ### 6.1 Event Creation Wizard
 
-Multi-step wizard at `/admin/events/new`:
+Multi-step wizard at `/admin/events/new`. A cancel button is available on every step; clicking it shows a confirmation dialog before discarding progress and returning to the events list.
 
 **Step 1 — Basics:** title, event type, date/time (start + end), capacity
 
