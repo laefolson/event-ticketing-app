@@ -1,11 +1,11 @@
 'use client';
 
-import { useRef, useCallback, useState } from 'react';
-import { toPng } from 'html-to-image';
+import { useCallback, useState } from 'react';
 import { Download, Calendar, MapPin, Hash, Ticket, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface TicketCardProps {
+  ticketId: string;
   eventTitle: string;
   dateFormatted: string;
   locationName: string | null;
@@ -17,6 +17,7 @@ interface TicketCardProps {
 }
 
 export function TicketCard({
+  ticketId,
   eventTitle,
   dateFormatted,
   locationName,
@@ -26,35 +27,33 @@ export function TicketCard({
   ticketCode,
   coverImageUrl,
 }: TicketCardProps) {
-  const cardRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
 
   const handleDownload = useCallback(async () => {
-    if (!cardRef.current) return;
     setDownloading(true);
 
     try {
-      const dataUrl = await toPng(cardRef.current, {
-        pixelRatio: 2,
-        backgroundColor: '#1c1917', // stone-950
-      });
+      const res = await fetch(`/api/tickets/${ticketId}/pdf`);
+      if (!res.ok) throw new Error('PDF generation failed');
 
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.download = `ticket-${ticketCode}.png`;
-      link.href = dataUrl;
+      link.href = url;
+      link.download = `ticket-${ticketCode}.pdf`;
       link.click();
+      URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Failed to generate ticket image:', err);
+      console.error('Failed to download ticket PDF:', err);
     } finally {
       setDownloading(false);
     }
-  }, [ticketCode]);
+  }, [ticketId, ticketCode]);
 
   return (
     <div className="mt-6 space-y-3">
       {/* The card to capture */}
       <div
-        ref={cardRef}
         className="relative overflow-hidden rounded-xl border border-stone-300 bg-stone-50 dark:border-stone-700 dark:bg-stone-900"
       >
         {/* Cover image or accent bar */}
@@ -62,7 +61,6 @@ export function TicketCard({
           <img
             src={coverImageUrl}
             alt=""
-            crossOrigin="anonymous"
             className="h-32 w-full object-cover"
           />
         ) : (

@@ -115,6 +115,7 @@ export default async function ConfirmPage({
       </Card>
 
       <TicketCard
+        ticketId={ticket.id}
         eventTitle={event.title}
         dateFormatted={format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a')}
         locationName={event.location_name}
