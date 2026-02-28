@@ -101,6 +101,7 @@ RLS must be enabled on all tables.
 | host_bio | text | pre-fillable from settings default |
 | faq | jsonb | array of `{question, answer}` |
 | status | enum | `draft \| published \| archived` |
+| social_sharing_enabled | boolean | default true; show/hide social share buttons on public page |
 | link_active | boolean | default true; set false on archive to 404 public page |
 | archived_at | timestamptz | set when admin manually archives |
 | created_by | uuid | fk → auth.users |
