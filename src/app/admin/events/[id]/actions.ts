@@ -22,6 +22,7 @@ const updateEventSchema = z
     location_name: z.string().max(200).nullable(),
     location_address: z.string().max(500).nullable(),
     host_bio: z.string().max(2000).nullable(),
+    host_bio_headline: z.string().max(200).nullable(),
     cover_image_url: z.string().url().nullable().optional(),
     gallery_urls: z.array(z.string().url()).optional(),
     social_sharing_enabled: z.boolean(),
@@ -49,6 +50,7 @@ export type UpdateEventInput = {
   location_name: string | null;
   location_address: string | null;
   host_bio: string | null;
+  host_bio_headline: string | null;
   cover_image_url?: string | null;
   gallery_urls?: string[];
   social_sharing_enabled: boolean;

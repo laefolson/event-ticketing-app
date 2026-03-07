@@ -25,6 +25,7 @@ export interface Event {
   cover_image_url: string | null;
   gallery_urls: string[];
   host_bio: string | null;
+  host_bio_headline: string | null;
   faq: Array<{ question: string; answer: string }>;
   status: EventStatus;
   social_sharing_enabled: boolean;

@@ -65,6 +65,7 @@ interface FormData {
   location_name: string;
   location_address: string;
   host_bio: string;
+  host_bio_headline: string;
   cover_image_url: string | null;
   gallery_urls: string[];
   tiers: TierFormData[];
@@ -132,6 +133,7 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
     location_name: '',
     location_address: '',
     host_bio: defaultHostBio ?? '',
+    host_bio_headline: 'About the Host',
     cover_image_url: null,
     gallery_urls: [],
     tiers: [],
@@ -368,6 +370,9 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
       location_name: formData.location_name.trim() || null,
       location_address: formData.location_address.trim() || null,
       host_bio: formData.host_bio.trim() || null,
+      host_bio_headline: formData.host_bio_headline.trim() && formData.host_bio_headline.trim() !== 'About the Host'
+        ? formData.host_bio_headline.trim()
+        : null,
       cover_image_url: formData.cover_image_url,
       gallery_urls: formData.gallery_urls.length > 0 ? formData.gallery_urls : undefined,
       faq: formData.faq.length > 0
@@ -603,6 +608,17 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                   placeholder="e.g. 123 Country Rd, Town, ST 12345"
                   value={formData.location_address}
                   onChange={(e) => updateField('location_address', e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="host_bio_headline">Host Section Headline</Label>
+                <Input
+                  id="host_bio_headline"
+                  placeholder="About the Host"
+                  value={formData.host_bio_headline}
+                  onChange={(e) => updateField('host_bio_headline', e.target.value)}
+                  maxLength={200}
                 />
               </div>
 
@@ -926,6 +942,12 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                   )}
                   {formData.gallery_urls.length > 0 && (
                     <p className="text-muted-foreground">{formData.gallery_urls.length} gallery image(s)</p>
+                  )}
+                  {formData.host_bio_headline && formData.host_bio_headline !== 'About the Host' && (
+                    <p>
+                      <span className="text-muted-foreground">Host section headline:</span>{' '}
+                      {formData.host_bio_headline}
+                    </p>
                   )}
                   {formData.host_bio && (
                     <p>

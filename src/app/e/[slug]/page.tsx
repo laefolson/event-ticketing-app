@@ -267,7 +267,7 @@ export default async function EventPage({ params }: EventPageProps) {
         {/* Host bio */}
         {event.host_bio && (
           <section className="border-b py-8">
-            <h2 className="mb-4 text-xl font-semibold">About the Host</h2>
+            <h2 className="mb-4 text-xl font-semibold">{event.host_bio_headline || 'About the Host'}</h2>
             <p className="text-muted-foreground whitespace-pre-line leading-relaxed">
               {event.host_bio}
             </p>
