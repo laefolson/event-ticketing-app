@@ -10,6 +10,7 @@ import { stripe } from '@/lib/stripe';
 import { sendEmail } from '@/lib/resend';
 import { RsvpConfirmationEmail } from '@/emails/rsvp-confirmation-email';
 import { getVenueName } from '@/lib/settings';
+import { generateTicketCode } from '@/lib/utils';
 import type { ActionResponse } from '@/types/actions';
 
 const checkoutSchema = z.object({
@@ -160,6 +161,7 @@ export async function createCheckoutSession(
     attendee_name,
     attendee_email,
     attendee_phone,
+    ticket_code: generateTicketCode(),
     quantity: item.quantity,
     amount_paid_cents: 0,
     status: 'pending' as const,

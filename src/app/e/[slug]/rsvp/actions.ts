@@ -7,6 +7,7 @@ import { createServiceClient } from '@/lib/supabase/service';
 import { sendEmail } from '@/lib/resend';
 import { RsvpConfirmationEmail } from '@/emails/rsvp-confirmation-email';
 import { getVenueName } from '@/lib/settings';
+import { generateTicketCode } from '@/lib/utils';
 import type { ActionResponse } from '@/types/actions';
 
 const rsvpSchema = z.object({
@@ -127,6 +128,7 @@ export async function submitRsvp(
       attendee_name,
       attendee_email,
       attendee_phone,
+      ticket_code: generateTicketCode(),
       quantity,
       amount_paid_cents: 0,
       status: 'confirmed',
