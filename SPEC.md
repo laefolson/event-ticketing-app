@@ -103,7 +103,7 @@ RLS must be enabled on all tables.
 | host_bio_headline | text | nullable; custom heading for host bio section on public page (e.g. "About the Band"); defaults to "About the Host" when null |
 | faq | jsonb | array of `{question, answer}` |
 | status | enum | `draft \| published \| cancelled \| archived` |
-| social_sharing_enabled | boolean | default true; show/hide social share buttons on public page |
+| social_sharing_enabled | boolean | default false; show/hide social share buttons on public page |
 | link_active | boolean | default true; set false on cancel/archive to 404 public page |
 | archived_at | timestamptz | set when admin manually archives |
 | created_by | uuid | fk → auth.users |
