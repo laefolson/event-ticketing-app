@@ -47,88 +47,96 @@ export async function POST(request: NextRequest) {
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session;
-      const ticketId = session.metadata?.ticket_id;
+      const sessionId = session.id;
 
-      if (!ticketId) {
-        console.error('checkout.session.completed: missing ticket_id in metadata');
-        break;
-      }
-
-      // Check if ticket is already confirmed (idempotent)
-      const { data: existing } = await supabase
+      // Find all pending tickets for this session
+      const { data: pendingTickets, error: fetchError } = await supabase
         .from('tickets')
-        .select('id, status, tier_id, quantity, attendee_name, attendee_email, event_id')
-        .eq('id', ticketId)
-        .single();
+        .select('id, status, tier_id, quantity, attendee_name, attendee_email, event_id, ticket_code')
+        .eq('stripe_session_id', sessionId)
+        .eq('status', 'pending');
 
-      if (!existing) {
-        console.error(`checkout.session.completed: ticket ${ticketId} not found`);
+      if (fetchError || !pendingTickets || pendingTickets.length === 0) {
+        console.error(`checkout.session.completed: no pending tickets for session ${sessionId}`);
         break;
       }
 
-      if (existing.status === 'confirmed') {
-        console.log(`checkout.session.completed: ticket ${ticketId} already confirmed`);
-        break;
-      }
+      const paymentIntentId = typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : null;
 
-      // Update ticket to confirmed
-      const amountPaidCents = session.amount_total ?? 0;
-      const { data: updatedTicket, error: updateError } = await supabase
-        .from('tickets')
-        .update({
-          status: 'confirmed',
-          amount_paid_cents: amountPaidCents,
-          stripe_payment_intent_id: typeof session.payment_intent === 'string'
-            ? session.payment_intent
-            : null,
-        })
-        .eq('id', ticketId)
-        .select('ticket_code')
-        .single();
-
-      if (updateError) {
-        console.error(`checkout.session.completed: failed to update ticket ${ticketId}:`, updateError.message);
-        break;
-      }
-
-      // Atomically increment quantity_sold on the tier
-      const { error: tierError } = await supabase
-        .rpc('adjust_quantity_sold', { p_tier_id: existing.tier_id, p_delta: existing.quantity });
-
-      if (tierError) {
-        console.error(`checkout.session.completed: failed to increment quantity_sold for tier ${existing.tier_id}:`, tierError.message);
-      }
-
-      // Send ticket confirmation email (best-effort)
-      if (existing.attendee_email && updatedTicket?.ticket_code) {
-        // Fetch tier name for the email
-        const { data: tier } = await supabase
+      // Confirm all tickets and adjust quantity_sold
+      for (const ticket of pendingTickets) {
+        const tier = await supabase
           .from('ticket_tiers')
-          .select('name')
-          .eq('id', existing.tier_id)
+          .select('price_cents')
+          .eq('id', ticket.tier_id)
           .single();
+
+        const tierPrice = tier.data?.price_cents ?? 0;
+        const ticketAmount = tierPrice * ticket.quantity;
+
+        const { error: updateError } = await supabase
+          .from('tickets')
+          .update({
+            status: 'confirmed',
+            amount_paid_cents: ticketAmount,
+            stripe_payment_intent_id: paymentIntentId,
+          })
+          .eq('id', ticket.id);
+
+        if (updateError) {
+          console.error(`checkout.session.completed: failed to update ticket ${ticket.id}:`, updateError.message);
+          continue;
+        }
+
+        const { error: tierError } = await supabase
+          .rpc('adjust_quantity_sold', { p_tier_id: ticket.tier_id, p_delta: ticket.quantity });
+
+        if (tierError) {
+          console.error(`checkout.session.completed: failed to increment quantity_sold for tier ${ticket.tier_id}:`, tierError.message);
+        }
+      }
+
+      // Send one confirmation email listing all tickets
+      const firstTicket = pendingTickets[0];
+      if (firstTicket.attendee_email) {
+        // Fetch tier names for all tickets
+        const tierIds = [...new Set(pendingTickets.map((t) => t.tier_id))];
+        const { data: tiersData } = await supabase
+          .from('ticket_tiers')
+          .select('id, name')
+          .in('id', tierIds);
+
+        const tierNameMap = new Map(tiersData?.map((t) => [t.id, t.name]) ?? []);
 
         const { data: eventData } = await supabase
           .from('events')
           .select('title, date_start, location_name')
-          .eq('id', existing.event_id)
+          .eq('id', firstTicket.event_id)
           .single();
 
         if (eventData) {
           const venueName = await getVenueName();
           const dateFormatted = format(new Date(eventData.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
+          const amountTotal = session.amount_total ?? 0;
+
+          const ticketLines = pendingTickets.map((t) => ({
+            tierName: tierNameMap.get(t.tier_id) ?? 'Ticket',
+            quantity: t.quantity,
+            ticketCode: t.ticket_code,
+          }));
+
           sendEmail({
-            to: existing.attendee_email,
+            to: firstTicket.attendee_email,
             subject: `Tickets Confirmed: ${eventData.title}`,
             react: TicketConfirmationEmail({
-              attendeeName: existing.attendee_name,
+              attendeeName: firstTicket.attendee_name,
               eventTitle: eventData.title,
               dateFormatted,
               locationName: eventData.location_name,
-              tierName: tier?.name ?? 'Ticket',
-              quantity: existing.quantity,
-              ticketCode: updatedTicket.ticket_code,
-              amountPaidFormatted: formatCents(amountPaidCents),
+              tickets: ticketLines,
+              amountPaidFormatted: formatCents(amountTotal),
               venueName,
             }),
           }).catch((err) => {
@@ -137,7 +145,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      console.log(`checkout.session.completed: ticket ${ticketId} confirmed`);
+      console.log(`checkout.session.completed: confirmed ${pendingTickets.length} ticket(s) for session ${sessionId}`);
       break;
     }
 
@@ -152,38 +160,39 @@ export async function POST(request: NextRequest) {
         break;
       }
 
-      const { data: ticket } = await supabase
+      // Find all tickets for this payment intent
+      const { data: tickets } = await supabase
         .from('tickets')
         .select('id, status, tier_id, quantity')
-        .eq('stripe_payment_intent_id', paymentIntentId)
-        .single();
+        .eq('stripe_payment_intent_id', paymentIntentId);
 
-      if (!ticket) {
-        console.log(`charge.refunded: no ticket found for payment_intent ${paymentIntentId}`);
+      if (!tickets || tickets.length === 0) {
+        console.log(`charge.refunded: no tickets found for payment_intent ${paymentIntentId}`);
         break;
       }
 
-      if (ticket.status === 'refunded') {
-        console.log(`charge.refunded: ticket ${ticket.id} already refunded`);
-        break;
-      }
+      for (const ticket of tickets) {
+        if (ticket.status === 'refunded') {
+          console.log(`charge.refunded: ticket ${ticket.id} already refunded`);
+          continue;
+        }
 
-      const { error: refundError } = await supabase
-        .from('tickets')
-        .update({ status: 'refunded' })
-        .eq('id', ticket.id);
+        const { error: refundError } = await supabase
+          .from('tickets')
+          .update({ status: 'refunded' })
+          .eq('id', ticket.id);
 
-      if (refundError) {
-        console.error(`charge.refunded: failed to update ticket ${ticket.id}:`, refundError.message);
-      } else {
-        console.log(`charge.refunded: ticket ${ticket.id} marked as refunded`);
+        if (refundError) {
+          console.error(`charge.refunded: failed to update ticket ${ticket.id}:`, refundError.message);
+        } else {
+          console.log(`charge.refunded: ticket ${ticket.id} marked as refunded`);
 
-        // Atomically decrement quantity_sold on the tier
-        const { error: tierError } = await supabase
-          .rpc('adjust_quantity_sold', { p_tier_id: ticket.tier_id, p_delta: -ticket.quantity });
+          const { error: tierError } = await supabase
+            .rpc('adjust_quantity_sold', { p_tier_id: ticket.tier_id, p_delta: -ticket.quantity });
 
-        if (tierError) {
-          console.error(`charge.refunded: failed to decrement quantity_sold for tier ${ticket.tier_id}:`, tierError.message);
+          if (tierError) {
+            console.error(`charge.refunded: failed to decrement quantity_sold for tier ${ticket.tier_id}:`, tierError.message);
+          }
         }
       }
 
@@ -192,40 +201,30 @@ export async function POST(request: NextRequest) {
 
     case 'checkout.session.expired': {
       const session = event.data.object as Stripe.Checkout.Session;
-      const ticketId = session.metadata?.ticket_id;
+      const sessionId = session.id;
 
-      if (!ticketId) {
-        console.error('checkout.session.expired: missing ticket_id in metadata');
-        break;
-      }
-
-      // Only clean up tickets that are still pending
-      const { data: ticket } = await supabase
+      // Delete all pending tickets for this session
+      const { data: pendingTickets } = await supabase
         .from('tickets')
-        .select('id, status')
-        .eq('id', ticketId)
-        .single();
+        .select('id')
+        .eq('stripe_session_id', sessionId)
+        .eq('status', 'pending');
 
-      if (!ticket) {
-        console.log(`checkout.session.expired: ticket ${ticketId} not found`);
-        break;
-      }
-
-      if (ticket.status !== 'pending') {
-        console.log(`checkout.session.expired: ticket ${ticketId} is ${ticket.status}, skipping`);
+      if (!pendingTickets || pendingTickets.length === 0) {
+        console.log(`checkout.session.expired: no pending tickets for session ${sessionId}`);
         break;
       }
 
       const { error: deleteError } = await supabase
         .from('tickets')
         .delete()
-        .eq('id', ticketId)
+        .eq('stripe_session_id', sessionId)
         .eq('status', 'pending');
 
       if (deleteError) {
-        console.error(`checkout.session.expired: failed to delete ticket ${ticketId}:`, deleteError.message);
+        console.error(`checkout.session.expired: failed to delete tickets for session ${sessionId}:`, deleteError.message);
       } else {
-        console.log(`checkout.session.expired: deleted pending ticket ${ticketId}`);
+        console.log(`checkout.session.expired: deleted ${pendingTickets.length} pending ticket(s) for session ${sessionId}`);
       }
 
       break;

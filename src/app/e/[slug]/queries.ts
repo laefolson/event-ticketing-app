@@ -35,3 +35,16 @@ export const getTicketById = cache(async (ticketId: string): Promise<(Ticket & {
   const { ticket_tiers, ...ticket } = data as Ticket & { ticket_tiers: { name: string } };
   return { ...ticket, tier_name: ticket_tiers.name };
 });
+
+export const getTicketsBySessionId = cache(async (sessionId: string): Promise<(Ticket & { tier_name: string })[]> => {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('tickets')
+    .select('*, ticket_tiers!inner(name)')
+    .eq('stripe_session_id', sessionId);
+  if (!data) return [];
+  return data.map((row) => {
+    const { ticket_tiers, ...ticket } = row as Ticket & { ticket_tiers: { name: string } };
+    return { ...ticket, tier_name: ticket_tiers.name };
+  });
+});

@@ -162,9 +162,7 @@ export async function submitRsvp(
         eventTitle: event.title,
         dateFormatted,
         locationName: event.location_name,
-        tierName: tier.name,
-        quantity,
-        ticketCode: ticket.ticket_code,
+        tickets: [{ tierName: tier.name, quantity, ticketCode: ticket.ticket_code }],
         venueName,
       }),
     }).catch((err) => {

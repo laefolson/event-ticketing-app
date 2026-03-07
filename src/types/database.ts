@@ -6,7 +6,7 @@ export type EventStatus = 'draft' | 'published' | 'cancelled' | 'archived';
 export type InvitationChannel = 'email' | 'sms' | 'both' | 'none';
 export type TicketStatus = 'pending' | 'confirmed' | 'checked_in' | 'cancelled' | 'refunded';
 export type TeamRole = 'admin' | 'helper';
-export type MessageType = 'invitation' | 'thank_you';
+export type MessageType = 'invitation' | 'thank_you' | 'save_the_date';
 export type MessageChannel = 'email' | 'sms';
 export type MessageStatus = 'sent' | 'delivered' | 'failed' | 'bounced';
 
@@ -27,6 +27,8 @@ export interface Event {
   host_bio: string | null;
   host_bio_headline: string | null;
   faq: Array<{ question: string; answer: string }>;
+  save_the_date_image_url: string | null;
+  save_the_date_text: string | null;
   status: EventStatus;
   social_sharing_enabled: boolean;
   link_active: boolean;
@@ -111,4 +113,14 @@ export interface InvitationLog {
   sent_at: string;
   status: MessageStatus;
   provider_message_id: string | null;
+}
+
+export interface SmsConsent {
+  id: string;
+  phone: string;
+  consent_type: string;
+  consent_text: string;
+  ip_address: string;
+  event_id: string | null;
+  consented_at: string;
 }

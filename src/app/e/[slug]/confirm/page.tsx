@@ -6,7 +6,7 @@ import { ArrowLeft, CheckCircle2, Calendar, MapPin, Hash, Users } from 'lucide-r
 import { format } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { getEventBySlug, getTicketById } from '../queries';
+import { getEventBySlug, getTicketById, getTicketsBySessionId } from '../queries';
 import { TicketCard } from './ticket-card';
 
 interface ConfirmPageProps {
@@ -19,15 +19,40 @@ export default async function ConfirmPage({
   searchParams,
 }: ConfirmPageProps) {
   const { slug } = await params;
-  const { ticket_id } = await searchParams;
-
-  if (!ticket_id) notFound();
-
-  const ticket = await getTicketById(ticket_id);
-  if (!ticket) notFound();
+  const { session_id, ticket_id } = await searchParams;
 
   const event = await getEventBySlug(slug);
-  if (!event || event.id !== ticket.event_id) notFound();
+  if (!event) notFound();
+
+  // Resolve tickets: prefer session_id (multi-ticket), fall back to ticket_id (legacy)
+  let tickets: Array<{
+    id: string;
+    event_id: string;
+    attendee_name: string;
+    attendee_email: string | null;
+    ticket_code: string;
+    tier_name: string;
+    quantity: number;
+    status: string;
+    amount_paid_cents: number;
+  }>;
+
+  if (session_id) {
+    const sessionTickets = await getTicketsBySessionId(session_id);
+    if (sessionTickets.length === 0) notFound();
+    // Verify all tickets belong to this event
+    if (sessionTickets.some((t) => t.event_id !== event.id)) notFound();
+    tickets = sessionTickets;
+  } else if (ticket_id) {
+    const ticket = await getTicketById(ticket_id);
+    if (!ticket || ticket.event_id !== event.id) notFound();
+    tickets = [ticket];
+  } else {
+    notFound();
+  }
+
+  const firstTicket = tickets[0];
+  const dateFormatted = format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
 
   return (
     <div className="mx-auto max-w-lg px-6 py-10 sm:px-8">
@@ -54,7 +79,7 @@ export default async function ConfirmPage({
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground text-sm">Status</span>
             <Badge variant="secondary" className="capitalize">
-              {ticket.status}
+              {firstTicket.status}
             </Badge>
           </div>
 
@@ -63,45 +88,47 @@ export default async function ConfirmPage({
               <span className="text-muted-foreground text-xs uppercase tracking-wide">
                 Attendee
               </span>
-              <p className="font-medium">{ticket.attendee_name}</p>
-              {ticket.attendee_email && (
+              <p className="font-medium">{firstTicket.attendee_name}</p>
+              {firstTicket.attendee_email && (
                 <p className="text-muted-foreground text-sm">
-                  {ticket.attendee_email}
+                  {firstTicket.attendee_email}
                 </p>
               )}
             </div>
 
-            <div className="flex items-center gap-2">
-              <Hash className="text-muted-foreground h-4 w-4" />
-              <div>
-                <span className="text-muted-foreground text-xs uppercase tracking-wide">
-                  Ticket Code
-                </span>
-                <p className="font-mono text-sm font-medium">
-                  {ticket.ticket_code}
-                </p>
-              </div>
-            </div>
+            {tickets.map((ticket) => (
+              <div key={ticket.id} className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Hash className="text-muted-foreground h-4 w-4" />
+                  <div>
+                    <span className="text-muted-foreground text-xs uppercase tracking-wide">
+                      Ticket Code
+                    </span>
+                    <p className="font-mono text-sm font-medium">
+                      {ticket.ticket_code}
+                    </p>
+                  </div>
+                </div>
 
-            <div className="flex items-center gap-2">
-              <Users className="text-muted-foreground h-4 w-4" />
-              <div>
-                <span className="text-muted-foreground text-xs uppercase tracking-wide">
-                  Tier &amp; Quantity
-                </span>
-                <p className="text-sm font-medium">
-                  {ticket.tier_name} &times; {ticket.quantity}
-                </p>
+                <div className="flex items-center gap-2">
+                  <Users className="text-muted-foreground h-4 w-4" />
+                  <div>
+                    <span className="text-muted-foreground text-xs uppercase tracking-wide">
+                      Tier &amp; Quantity
+                    </span>
+                    <p className="text-sm font-medium">
+                      {ticket.tier_name} &times; {ticket.quantity}
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
+            ))}
           </div>
 
           <div className="border-border border-t pt-4 space-y-3">
             <div className="flex items-center gap-2">
               <Calendar className="text-muted-foreground h-4 w-4" />
-              <p className="text-sm">
-                {format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a')}
-              </p>
+              <p className="text-sm">{dateFormatted}</p>
             </div>
 
             {event.location_name && (
@@ -114,17 +141,20 @@ export default async function ConfirmPage({
         </CardContent>
       </Card>
 
-      <TicketCard
-        ticketId={ticket.id}
-        eventTitle={event.title}
-        dateFormatted={format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a')}
-        locationName={event.location_name}
-        attendeeName={ticket.attendee_name}
-        tierName={ticket.tier_name}
-        quantity={ticket.quantity}
-        ticketCode={ticket.ticket_code}
-        coverImageUrl={event.cover_image_url}
-      />
+      {tickets.map((ticket) => (
+        <TicketCard
+          key={ticket.id}
+          ticketId={ticket.id}
+          eventTitle={event.title}
+          dateFormatted={dateFormatted}
+          locationName={event.location_name}
+          attendeeName={ticket.attendee_name}
+          tierName={ticket.tier_name}
+          quantity={ticket.quantity}
+          ticketCode={ticket.ticket_code}
+          coverImageUrl={event.cover_image_url}
+        />
+      ))}
     </div>
   );
 }

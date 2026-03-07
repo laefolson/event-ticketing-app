@@ -18,12 +18,9 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
 
   const tiers = await getTiersForEvent(event.id);
 
-  // Only paid events should reach the checkout page
+  // Only events with at least one paid tier should reach the checkout page
   const hasPaidTiers = tiers.some((t) => t.price_cents > 0);
   if (!hasPaidTiers) notFound();
-
-  // Filter to paid tiers only
-  const paidTiers = tiers.filter((t) => t.price_cents > 0);
 
   return (
     <div className="mx-auto max-w-lg px-6 py-10 sm:px-8">
@@ -37,10 +34,10 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
 
       <h1 className="mb-2 text-2xl font-bold">{event.title}</h1>
       <p className="text-muted-foreground mb-8">
-        Select your tickets and complete payment.
+        Select your tickets and complete checkout.
       </p>
 
-      <CheckoutForm eventId={event.id} slug={slug} tiers={paidTiers} />
+      <CheckoutForm eventId={event.id} slug={slug} tiers={tiers} />
     </div>
   );
 }

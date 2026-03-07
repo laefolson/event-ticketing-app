@@ -2,14 +2,18 @@ import { Section, Text } from '@react-email/components';
 import * as React from 'react';
 import { BaseLayout } from './base-layout';
 
+interface TicketLine {
+  tierName: string;
+  quantity: number;
+  ticketCode: string;
+}
+
 interface TicketConfirmationEmailProps {
   attendeeName: string;
   eventTitle: string;
   dateFormatted: string;
   locationName: string | null;
-  tierName: string;
-  quantity: number;
-  ticketCode: string;
+  tickets: TicketLine[];
   amountPaidFormatted: string;
   venueName: string;
 }
@@ -19,9 +23,7 @@ export function TicketConfirmationEmail({
   eventTitle,
   dateFormatted,
   locationName,
-  tierName,
-  quantity,
-  ticketCode,
+  tickets,
   amountPaidFormatted,
   venueName,
 }: TicketConfirmationEmailProps) {
@@ -44,17 +46,24 @@ export function TicketConfirmationEmail({
             <Text style={detailValue}>{locationName}</Text>
           </>
         )}
-        <Text style={detailLabel}>Tier</Text>
-        <Text style={detailValue}>
-          {tierName} &times; {quantity}
-        </Text>
+        <Text style={detailLabel}>Tickets</Text>
+        {tickets.map((ticket, i) => (
+          <React.Fragment key={i}>
+            <Text style={detailValue}>
+              {ticket.tierName} &times; {ticket.quantity}
+            </Text>
+            <Text style={detailLabel}>Ticket Code</Text>
+            <Text style={i === tickets.length - 1 ? codeValueLast : codeValue}>
+              {ticket.ticketCode}
+            </Text>
+            {i < tickets.length - 1 && <Text style={detailLabel}>---</Text>}
+          </React.Fragment>
+        ))}
         <Text style={detailLabel}>Amount Paid</Text>
         <Text style={detailValue}>{amountPaidFormatted}</Text>
-        <Text style={detailLabel}>Ticket Code</Text>
-        <Text style={codeValue}>{ticketCode}</Text>
       </Section>
       <Text style={paragraph}>
-        Please save your ticket code. You may need to present it at the event.
+        Please save your ticket code{tickets.length > 1 ? 's' : ''}. You may need to present {tickets.length > 1 ? 'them' : 'it'} at the event.
       </Text>
     </BaseLayout>
   );
@@ -100,6 +109,15 @@ const detailValue: React.CSSProperties = {
 };
 
 const codeValue: React.CSSProperties = {
+  color: '#1c1917',
+  fontFamily: 'monospace',
+  fontSize: '18px',
+  fontWeight: '700',
+  letterSpacing: '0.05em',
+  margin: '0 0 12px',
+};
+
+const codeValueLast: React.CSSProperties = {
   color: '#1c1917',
   fontFamily: 'monospace',
   fontSize: '18px',
