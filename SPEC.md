@@ -10,6 +10,7 @@
 | Version | Date | Summary |
 |---------|------|---------|
 | 1.1 | Feb 2026 | Initial spec. Multiple CSV uploads, TOTP MFA, configurable invitation channels, post-event thank-you + archive, per-tier ticket limits, Phase 1 printable ticket card. |
+| 1.2 | Mar 2026 | Add customizable host bio section headline per event. |
 
 ---
 
@@ -99,6 +100,7 @@ RLS must be enabled on all tables.
 | cover_image_url | text | Supabase Storage URL |
 | gallery_urls | text[] | up to 6 additional images |
 | host_bio | text | pre-fillable from settings default |
+| host_bio_headline | text | nullable; custom heading for host bio section on public page (e.g. "About the Band"); defaults to "About the Host" when null |
 | faq | jsonb | array of `{question, answer}` |
 | status | enum | `draft \| published \| cancelled \| archived` |
 | social_sharing_enabled | boolean | default true; show/hide social share buttons on public page |
@@ -244,7 +246,7 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
 
 **Step 1 — Basics:** title, event type, date/time (start + end), capacity
 
-**Step 2 — Details:** markdown description, location name + address, cover image, up to 6 gallery photos, host bio (pre-fillable from settings default)
+**Step 2 — Details:** markdown description, location name + address, cover image, up to 6 gallery photos, host bio section headline (defaults to "About the Host"; customizable per event, e.g. "About the Band"), host bio (pre-fillable from settings default)
 
 **Step 3 — Ticket Tiers:**
 - Toggle: Free vs. Paid
@@ -263,7 +265,7 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
 
 - Not search-indexed (`noindex` meta tag)
 - Returns 404 if `link_active = false`
-- Sections: hero (cover image, title, date, location), description, tier cards, map, host bio, FAQ accordion, social share buttons
+- Sections: hero (cover image, title, date, location), description, tier cards, map, host bio (heading from `host_bio_headline` or "About the Host"), FAQ accordion, social share buttons
 - Tier cards show price, description, quantity remaining, and limit notice if `max_per_contact` is set
 - Sold out state when `quantity_sold = quantity_total`
 - Sticky footer CTA: "Get Tickets" or "RSVP Now"
