@@ -221,7 +221,6 @@ export default async function EventPage({ params }: EventPageProps) {
         {/* Gallery */}
         {event.gallery_urls && event.gallery_urls.length > 0 && (
           <section className="border-b py-8">
-            <h2 className="mb-4 text-xl font-semibold">Gallery</h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {event.gallery_urls.map((url, i) => (
                 <div key={i} className="relative aspect-[4/3] overflow-hidden rounded-lg">
