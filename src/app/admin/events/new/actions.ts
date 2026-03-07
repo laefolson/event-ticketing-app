@@ -241,11 +241,5 @@ export async function getDefaultHostBio(): Promise<string | null> {
     .eq('key', 'default_host_bio')
     .single();
 
-  if (!data?.value) return null;
-
-  try {
-    return JSON.parse(data.value) as string;
-  } catch {
-    return data.value;
-  }
+  return (data?.value as string) || null;
 }

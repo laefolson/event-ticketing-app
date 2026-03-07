@@ -11,11 +11,5 @@ export async function getVenueName(): Promise<string> {
     .eq('key', 'venue_name')
     .single();
 
-  if (!data?.value) return DEFAULT_VENUE_NAME;
-
-  try {
-    return JSON.parse(data.value as string) || DEFAULT_VENUE_NAME;
-  } catch {
-    return DEFAULT_VENUE_NAME;
-  }
+  return (data?.value as string) || DEFAULT_VENUE_NAME;
 }

@@ -48,9 +48,7 @@ export default async function SettingsPage() {
     .eq('key', 'venue_name')
     .single();
 
-  const venueName: string = venueNameRow?.value
-    ? JSON.parse(venueNameRow.value as string)
-    : 'The Barn';
+  const venueName: string = (venueNameRow?.value as string) || 'The Barn';
 
   const { data: hostBioRow } = await supabase
     .from('app_settings')
@@ -58,9 +56,7 @@ export default async function SettingsPage() {
     .eq('key', 'default_host_bio')
     .single();
 
-  const defaultHostBio: string = hostBioRow?.value
-    ? JSON.parse(hostBioRow.value as string)
-    : '';
+  const defaultHostBio: string = (hostBioRow?.value as string) || '';
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">

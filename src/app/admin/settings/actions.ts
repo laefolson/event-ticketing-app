@@ -58,7 +58,7 @@ export async function updateDefaultHostBio(
   const { error } = await supabase
     .from('app_settings')
     .upsert(
-      { key: 'default_host_bio', value: JSON.stringify(parsed.data.value), updated_at: new Date().toISOString() },
+      { key: 'default_host_bio', value: parsed.data.value, updated_at: new Date().toISOString() },
       { onConflict: 'key' }
     );
 
@@ -88,7 +88,7 @@ export async function updateVenueName(
   const { error } = await supabase
     .from('app_settings')
     .upsert(
-      { key: 'venue_name', value: JSON.stringify(parsed.data.value), updated_at: new Date().toISOString() },
+      { key: 'venue_name', value: parsed.data.value, updated_at: new Date().toISOString() },
       { onConflict: 'key' }
     );
 
