@@ -170,7 +170,7 @@ export default async function EventPage({ params }: EventPageProps) {
         {/* Description */}
         {event.description && (
           <section className="border-b py-8">
-            <h2 className="mb-4 text-xl font-semibold">About This Event</h2>
+            <h2 className="mb-4 text-xl font-semibold">Event Details</h2>
             <div className="prose prose-stone dark:prose-invert max-w-none text-muted-foreground leading-relaxed">
               <Markdown>{event.description}</Markdown>
             </div>
