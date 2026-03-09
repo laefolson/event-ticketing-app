@@ -18,6 +18,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('redirectTo') ?? '/admin';
   const callbackError = searchParams.get('error');
+  const reason = searchParams.get('reason');
 
   const [state, formAction, isPending] = useActionState(login, {
     error: callbackError === 'auth_callback_error'
@@ -34,6 +35,11 @@ function LoginForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {reason === 'timeout' && (
+          <p className="mb-4 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+            Your session expired due to inactivity. Please sign in again.
+          </p>
+        )}
         <form action={formAction} className="space-y-4">
           <input type="hidden" name="redirectTo" value={redirectTo} />
 

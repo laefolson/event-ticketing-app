@@ -1,6 +1,8 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
+const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request: {
@@ -49,6 +51,17 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(redirectUrl);
     }
 
+    // Check 24-hour inactivity timeout
+    const lastActivity = request.cookies.get('last_activity')?.value;
+    if (lastActivity && Date.now() - Number(lastActivity) > SESSION_TIMEOUT_MS) {
+      await supabase.auth.signOut();
+      const redirectUrl = new URL('/auth/login', request.url);
+      redirectUrl.searchParams.set('reason', 'timeout');
+      response = NextResponse.redirect(redirectUrl);
+      response.cookies.delete('last_activity');
+      return response;
+    }
+
     // User exists — check MFA assurance level
     const { data: aal } =
       await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
@@ -76,6 +89,14 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(new URL('/admin', request.url));
       }
     }
+
+    // Update last_activity timestamp
+    response.cookies.set('last_activity', String(Date.now()), {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+    });
   }
 
   // Prevent authenticated+MFA users from accessing the MFA page again
