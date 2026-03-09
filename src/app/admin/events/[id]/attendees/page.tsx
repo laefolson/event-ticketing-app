@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { AttendeesManager } from './attendees-manager';
 
 interface AttendeesPageProps {
@@ -36,11 +37,19 @@ export default async function AttendeesPage({ params }: AttendeesPageProps) {
     .eq('event_id', id)
     .order('sort_order', { ascending: true });
 
+  // RLS on sms_consents is service-role-only, so use service client
+  const serviceClient = createServiceClient();
+  const { data: smsConsents } = await serviceClient
+    .from('sms_consents')
+    .select('phone, consent_type')
+    .eq('event_id', id);
+
   return (
     <AttendeesManager
       tickets={tickets ?? []}
       tiers={tiers ?? []}
       eventId={event.id}
+      smsConsents={smsConsents ?? []}
     />
   );
 }

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, QrCode, CheckCircle2, Undo2 } from 'lucide-react';
+import { Plus, Search, QrCode, CheckCircle2, Undo2, Download, Check, Minus } from 'lucide-react';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -44,10 +44,16 @@ type TierOption = Pick<
   'id' | 'name' | 'price_cents' | 'quantity_total' | 'quantity_sold'
 >;
 
+interface SmsConsent {
+  phone: string;
+  consent_type: string;
+}
+
 interface AttendeesManagerProps {
   tickets: TicketWithTier[];
   tiers: TierOption[];
   eventId: string;
+  smsConsents: SmsConsent[];
 }
 
 const emptyWalkInForm = {
@@ -66,10 +72,22 @@ function formatCents(cents: number): string {
   }).format(cents / 100);
 }
 
+function normalizePhone(phone: string): string {
+  return phone.replace(/\D/g, '');
+}
+
+function escapeCsvValue(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
 export function AttendeesManager({
   tickets,
   tiers,
   eventId,
+  smsConsents,
 }: AttendeesManagerProps) {
   const router = useRouter();
 
@@ -111,6 +129,52 @@ export function AttendeesManager({
         (t.attendee_email && t.attendee_email.toLowerCase().includes(q))
     );
   }, [tickets, search]);
+
+  // Build phone-based consent lookup sets
+  const { eventOptInPhones, marketingOptInPhones } = useMemo(() => {
+    const eventSet = new Set<string>();
+    const marketingSet = new Set<string>();
+    for (const consent of smsConsents) {
+      const normalized = normalizePhone(consent.phone);
+      if (consent.consent_type === 'event_updates') eventSet.add(normalized);
+      if (consent.consent_type === 'marketing') marketingSet.add(normalized);
+    }
+    return { eventOptInPhones: eventSet, marketingOptInPhones: marketingSet };
+  }, [smsConsents]);
+
+  function hasConsent(phone: string | null, set: Set<string>): boolean {
+    if (!phone) return false;
+    return set.has(normalizePhone(phone));
+  }
+
+  // CSV export
+  function handleExportCsv() {
+    const headers = [
+      'Name', 'Email', 'Phone', 'Tier', 'Qty', 'Amount Paid',
+      'Status', 'Purchased', 'SMS Event Opt-In', 'SMS Marketing Opt-In',
+    ];
+    const rows = tickets.map((t) => [
+      escapeCsvValue(t.attendee_name),
+      escapeCsvValue(t.attendee_email ?? ''),
+      escapeCsvValue(t.attendee_phone ?? ''),
+      escapeCsvValue(t.ticket_tiers?.name ?? ''),
+      String(t.quantity),
+      formatCents(t.amount_paid_cents),
+      t.status === 'checked_in' ? 'Checked In' : 'Confirmed',
+      format(new Date(t.purchased_at), 'yyyy-MM-dd'),
+      hasConsent(t.attendee_phone, eventOptInPhones) ? 'Yes' : 'No',
+      hasConsent(t.attendee_phone, marketingOptInPhones) ? 'Yes' : 'No',
+    ]);
+
+    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'attendees-export.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   // Walk-in handlers
   function openWalkIn() {
@@ -175,10 +239,16 @@ export function AttendeesManager({
             ({expectedCount} expected)
           </span>
         </h2>
-        <Button onClick={openWalkIn}>
-          <Plus className="mr-2 h-4 w-4" />
-          Walk-in
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleExportCsv} disabled={tickets.length === 0}>
+            <Download className="mr-2 h-4 w-4" />
+            Export CSV
+          </Button>
+          <Button onClick={openWalkIn}>
+            <Plus className="mr-2 h-4 w-4" />
+            Walk-in
+          </Button>
+        </div>
       </div>
 
       {/* Counter card */}
@@ -249,6 +319,8 @@ export function AttendeesManager({
                   <TableHead>Code</TableHead>
                   <TableHead>Paid</TableHead>
                   <TableHead>Purchased</TableHead>
+                  <TableHead className="text-center">SMS Event</TableHead>
+                  <TableHead className="text-center">SMS Marketing</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Check-In</TableHead>
                 </TableRow>
@@ -257,7 +329,7 @@ export function AttendeesManager({
                 {filteredTickets.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={10}
+                      colSpan={12}
                       className="text-muted-foreground h-24 text-center"
                     >
                       No attendees match your search.
@@ -291,6 +363,20 @@ export function AttendeesManager({
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {format(new Date(ticket.purchased_at), 'MMM d')}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {hasConsent(ticket.attendee_phone, eventOptInPhones) ? (
+                            <Check className="inline h-4 w-4 text-green-600" />
+                          ) : (
+                            <Minus className="inline h-4 w-4 text-muted-foreground" />
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {hasConsent(ticket.attendee_phone, marketingOptInPhones) ? (
+                            <Check className="inline h-4 w-4 text-green-600" />
+                          ) : (
+                            <Minus className="inline h-4 w-4 text-muted-foreground" />
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge
