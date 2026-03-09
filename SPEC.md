@@ -11,6 +11,8 @@
 |---------|------|---------|
 | 1.1 | Feb 2026 | Initial spec. Multiple CSV uploads, TOTP MFA, configurable invitation channels, post-event thank-you + archive, per-tier ticket limits, Phase 1 printable ticket card. |
 | 1.2 | Mar 2026 | Add customizable host bio section headline per event. |
+| 1.3 | Mar 2026 | Add save-the-date feature: per-event image/text, email + SMS sending, SaveTheDateEmail template, `save_the_date` message type, wizard updated to 6 steps. |
+| 1.4 | Mar 2026 | Add SMS opt-in columns (event updates + marketing) and CSV export to attendees tab. |
 
 ---
 
@@ -101,6 +103,8 @@ RLS must be enabled on all tables.
 | gallery_urls | text[] | up to 6 additional images |
 | host_bio | text | pre-fillable from settings default |
 | host_bio_headline | text | nullable; custom heading for host bio section on public page (e.g. "About the Band"); defaults to "About the Host" when null |
+| save_the_date_image_url | text | nullable; optional image used in save-the-date emails |
+| save_the_date_text | text | nullable; optional custom body text for save-the-date messages |
 | faq | jsonb | array of `{question, answer}` |
 | status | enum | `draft \| published \| cancelled \| archived` |
 | social_sharing_enabled | boolean | default false; show/hide social share buttons on public page |
@@ -185,6 +189,20 @@ RLS must be enabled on all tables.
 | imported_by | uuid | fk → auth.users |
 | imported_at | timestamptz | |
 
+### `sms_consents`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | primary key |
+| phone | text | not null; phone number that consented |
+| consent_type | text | `event_updates` or `marketing` |
+| consent_text | text | exact checkbox label the user agreed to |
+| ip_address | text | IP at time of consent |
+| event_id | uuid | fk → events (on delete set null) |
+| consented_at | timestamptz | default now() |
+
+RLS: service-role only (records written server-side during checkout).
+
 ### `invitation_logs`
 
 | Column | Type | Notes |
@@ -192,7 +210,7 @@ RLS must be enabled on all tables.
 | id | uuid | primary key |
 | event_id | uuid | fk → events |
 | contact_id | uuid | fk → contacts |
-| message_type | enum | `invitation \| thank_you` |
+| message_type | enum | `invitation \| thank_you \| save_the_date` |
 | channel | enum | `email \| sms` |
 | sent_at | timestamptz | |
 | status | enum | `sent \| delivered \| failed \| bounced` |
@@ -248,16 +266,18 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
 
 **Step 2 — Details:** markdown description, location name + address, cover image, up to 6 gallery photos, host bio section headline (defaults to "About the Host"; customizable per event, e.g. "About the Band"), host bio (pre-fillable from settings default)
 
-**Step 3 — Ticket Tiers:**
+**Step 3 — Save the Date:** optional save-the-date image upload (`save_the_date_image_url`) and custom text (`save_the_date_text`); used when sending save-the-date messages before invitations (see §6.10)
+
+**Step 4 — Ticket Tiers:**
 - Toggle: Free vs. Paid
 - Each tier: name, price, quantity, description, `max_per_contact` (optional)
 - Paid tiers: auto-create Stripe Product + Price on save; store `stripe_price_id`
 - Free events: single RSVP tier, no Stripe
 - Tier `quantity_total` is validated against event `capacity` on create and update — total across all tiers cannot exceed capacity. Events with unlimited capacity (null) skip this validation.
 
-**Step 4 — Landing Page Content:** FAQ pairs (add/remove/reorder), preview mode
+**Step 5 — Landing Page Content:** FAQ pairs (add/remove/reorder), preview mode
 
-**Step 5 — Review & Publish:** summary of all details; Save as Draft or Publish (`link_active = true`)
+**Step 6 — Review & Publish:** summary of all details; Save as Draft or Publish (`link_active = true`)
 
 ---
 
@@ -380,6 +400,8 @@ Optional — most events run on honor system; check-in is not required.
 - Manual check-in toggle per attendee (sets `status = checked_in`)
 - Walk-in mode: create ticket manually (name, email, tier)
 - Live counter: X checked in / Y expected
+- **SMS opt-in columns:** two inline columns show whether each attendee opted in to SMS event updates and/or marketing (matched by normalized phone number against `sms_consents` records)
+- **Export CSV:** downloads full attendee list as `attendees-export.csv` with columns: Name, Email, Phone, Tier, Qty, Amount Paid, Status, Purchased, SMS Event Opt-In, SMS Marketing Opt-In
 
 > Phase 2: QR code scanning via device camera
 
@@ -400,12 +422,42 @@ Optional — most events run on honor system; check-in is not required.
 
 ---
 
+### 6.10 Save the Date
+
+Admins can send save-the-date messages to contacts before formal invitations are sent. This is useful for early awareness — letting guests know an event is coming without providing the full invitation link yet.
+
+**Configuration (per event):**
+- `save_the_date_image_url` — optional image displayed in the save-the-date email (uploaded via the wizard or event edit page)
+- `save_the_date_text` — optional custom body text; if blank, a default message is used
+
+**Sending (from `/admin/events/[id]/contacts`):**
+
+- **Email (Resend):**
+  - Sends to contacts where `invitation_channel` is `email` or `both`
+  - From name: "Blue Barn Events"
+  - Uses the `SaveTheDateEmail` template (see §7)
+  - Personalized with `first_name`; includes event title, date, and optional image
+  - Scope options: all eligible | selected contacts
+
+- **SMS (Twilio):**
+  - Sends to contacts where `invitation_channel` is `sms` or `both`
+  - Message: `"Save the date! {Event Title} on {Date}. More details coming soon."`
+  - Scope options: all eligible | selected contacts
+
+**Logging:**
+- Each message logged to `invitation_logs` with `message_type = 'save_the_date'`
+- Does **not** update `contacts.invited_at` — that field is reserved for formal invitations only
+
+---
+
 ## 7. Message Templates
 
 All email templates built in **Resend React Email** format. Must be responsive and include the configurable venue name (from `/admin/settings`) in header and footer.
 
 | Template | Channel | Trigger |
 |----------|---------|---------|
+| SaveTheDateEmail | Email | Admin sends save-the-date from contacts page |
+| Save the Date | SMS | Admin sends save-the-date from contacts page |
 | Invitation | Email | Admin sends invitation |
 | Invitation | SMS | Admin sends invitation |
 | RSVP Confirmation | Email | Guest completes free RSVP |
