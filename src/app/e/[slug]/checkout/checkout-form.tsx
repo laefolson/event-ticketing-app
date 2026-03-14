@@ -257,6 +257,15 @@ export function CheckoutForm({ eventId, slug, tiers }: CheckoutFormProps) {
               rel="noopener noreferrer"
             >
               Privacy Policy
+            </a>{' '}
+            and{' '}
+            <a
+              href="/terms"
+              className="underline hover:text-foreground"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Terms and Conditions
             </a>
             .
           </p>
