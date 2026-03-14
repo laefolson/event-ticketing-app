@@ -20,16 +20,17 @@
 
 1. [Overview](#1-overview)
 2. [Tech Stack](#2-tech-stack)
-3. [User Roles](#3-user-roles)
-4. [Database Schema](#4-database-schema)
-5. [Routes](#5-routes)
-6. [Features](#6-features)
-7. [Message Templates](#7-message-templates)
-8. [Stripe Integration](#8-stripe-integration)
-9. [Authentication & Security](#9-authentication--security)
-10. [Environment Variables](#10-environment-variables)
-11. [Phase 2 Backlog](#11-phase-2-backlog)
-12. [Implementation Notes](#12-implementation-notes)
+3. [Color System](#3-color-system)
+4. [User Roles](#4-user-roles)
+5. [Database Schema](#5-database-schema)
+6. [Routes](#6-routes)
+7. [Features](#7-features)
+8. [Message Templates](#8-message-templates)
+9. [Stripe Integration](#9-stripe-integration)
+10. [Authentication & Security](#10-authentication--security)
+11. [Environment Variables](#11-environment-variables)
+12. [Phase 2 Backlog](#12-phase-2-backlog)
+13. [Implementation Notes](#13-implementation-notes)
 
 ---
 
@@ -70,7 +71,46 @@ A full-stack web app for a private barn event center to create, manage, and arch
 
 ---
 
-## 3. User Roles
+## 3. Color System
+
+### Brand Colors
+
+| Token                  | Hex       | Usage                                      |
+|------------------------|-----------|--------------------------------------------|
+| `--color-primary`      | `#bad1b1` | Buttons, active nav, primary actions       |
+| `--color-primary-light`| `#eaf3e8` | Card backgrounds, input focus rings        |
+| `--color-primary-mid`  | `#8aaa80` | Hover states on primary elements           |
+| `--color-primary-dark` | `#4e7a44` | Pressed states, text on light green bg     |
+| `--color-primary-deep` | `#1a3a0f` | Headings, logo text                        |
+| `--color-sky`          | `#d8e9f3` | Info banners, ticket tier highlights       |
+| `--color-sky-dark`     | `#5597bb` | Links, info text                           |
+| `--color-accent`       | `#f3bbb1` | CTAs, checkout button, sold-out badges     |
+| `--color-accent-dark`  | `#b84e3a` | Hover on accent elements                   |
+| `--color-straw`        | `#f1e5bc` | Event banners, featured callouts           |
+| `--color-straw-dark`   | `#a08835` | Text on straw backgrounds                  |
+
+### Neutrals
+
+| Token                       | Hex       | Usage                          |
+|-----------------------------|-----------|--------------------------------|
+| `--color-bg-page`           | `#f5f5f0` | Page background                |
+| `--color-bg-surface`        | `#ffffff` | Cards, modals, inputs          |
+| `--color-border`            | `#e8e8e2` | Card borders, dividers         |
+| `--color-text-primary`      | `#2c2c2a` | Body text, headings            |
+| `--color-text-secondary`    | `#5f5e5a` | Labels, metadata, placeholders |
+| `--color-text-muted`        | `#b4b2a9` | Disabled states, hints         |
+
+### Status Colors
+
+| Token                    | Light       | Base      | Dark      | Usage                        |
+|--------------------------|-------------|-----------|-----------|------------------------------|
+| Success                  | `#eaf3de`   | `#639922` | `#27500a` | Confirmed tickets, paid      |
+| Warning                  | `#faeeda`   | `#ba7517` | `#633806` | Low availability, expiring   |
+| Error                    | `#fcebeb`   | `#e24b4a` | `#791f1f` | Failed payment, validation   |
+
+---
+
+## 4. User Roles
 
 | Role | Permissions |
 |------|-------------|
@@ -80,7 +120,7 @@ A full-stack web app for a private barn event center to create, manage, and arch
 
 ---
 
-## 4. Database Schema
+## 5. Database Schema
 
 RLS must be enabled on all tables.
 
@@ -218,7 +258,7 @@ RLS: service-role only (records written server-side during checkout).
 
 ---
 
-## 5. Routes
+## 6. Routes
 
 ### Public (no auth)
 
@@ -256,7 +296,7 @@ RLS: service-role only (records written server-side during checkout).
 
 ---
 
-## 6. Features
+## 7. Features
 
 ### 6.1 Event Creation Wizard
 
@@ -450,7 +490,7 @@ Admins can send save-the-date messages to contacts before formal invitations are
 
 ---
 
-## 7. Message Templates
+## 8. Message Templates
 
 All email templates built in **Resend React Email** format. Must be responsive and include the configurable venue name (from `/admin/settings`) in header and footer.
 
@@ -468,7 +508,7 @@ All email templates built in **Resend React Email** format. Must be responsive a
 
 ---
 
-## 8. Stripe Integration
+## 9. Stripe Integration
 
 - Use **Stripe Checkout** (hosted) for PCI compliance
 - On tier creation with `price_cents > 0`: auto-create Stripe Product + Price; store `stripe_price_id`
@@ -488,7 +528,7 @@ All email templates built in **Resend React Email** format. Must be responsive a
 
 ---
 
-## 9. Authentication & Security
+## 10. Authentication & Security
 
 ### Admin Auth — TOTP MFA
 
@@ -522,7 +562,7 @@ All email templates built in **Resend React Email** format. Must be responsive a
 
 ---
 
-## 10. Environment Variables
+## 11. Environment Variables
 
 | Variable | Notes |
 |----------|-------|
@@ -543,7 +583,7 @@ All email templates built in **Resend React Email** format. Must be responsive a
 
 ---
 
-## 11. Phase 2 Backlog
+## 12. Phase 2 Backlog
 
 - [ ] QR code image on ticket (encode `ticket_code` as scannable QR)
 - [ ] Apple Wallet `.pkpass` ticket generation with QR code
@@ -560,7 +600,7 @@ All email templates built in **Resend React Email** format. Must be responsive a
 
 ---
 
-## 12. Implementation Notes
+## 13. Implementation Notes
 
 > For Claude Code / Cursor. Follow these conventions for a clean, production-ready codebase.
 
