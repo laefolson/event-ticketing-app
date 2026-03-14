@@ -290,6 +290,13 @@ export default async function EventPage({ params }: EventPageProps) {
             </Accordion>
           </section>
         )}
+
+        {/* Privacy policy */}
+        <p className="pb-8 text-center text-xs text-muted-foreground">
+          <Link href="/privacy-policy" className="hover:underline">
+            Privacy Policy
+          </Link>
+        </p>
       </div>
 
       {/* Sticky footer CTA */}
