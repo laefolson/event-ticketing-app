@@ -243,6 +243,23 @@ export function CheckoutForm({ eventId, slug, tiers }: CheckoutFormProps) {
               I agree to receive text messages about this event
             </label>
           </div>
+          <p className="text-xs text-muted-foreground leading-relaxed pl-6">
+            By checking this box, you consent to receive text messages from Over
+            Yonder Farm regarding your ticket purchase and the event you are
+            attending. Messages may include order confirmations, event reminders,
+            day-of logistics, and material event updates. Message frequency
+            varies per event, typically 2–4 messages per event. Message and data
+            rates may apply. Reply STOP to opt out at any time. View our{' '}
+            <a
+              href="/privacy-policy"
+              className="underline hover:text-foreground"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Privacy Policy
+            </a>
+            .
+          </p>
           <div className="flex items-start gap-2">
             <Checkbox
               id="consent-marketing"
@@ -259,6 +276,22 @@ export function CheckoutForm({ eventId, slug, tiers }: CheckoutFormProps) {
               Barn Events
             </label>
           </div>
+          <p className="text-xs text-muted-foreground leading-relaxed pl-6">
+            By checking this box, you consent to receive text messages from Over
+            Yonder Farm about upcoming events, new event announcements, and
+            seasonal programming. Message frequency varies, typically no more
+            than 1 message per month. Message and data rates may apply. Reply
+            STOP to opt out at any time. View our{' '}
+            <a
+              href="/privacy-policy"
+              className="underline hover:text-foreground"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Privacy Policy
+            </a>
+            .
+          </p>
         </div>
       )}
 
