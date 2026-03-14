@@ -146,9 +146,9 @@ RLS must be enabled on all tables.
 | save_the_date_image_url | text | nullable; optional image used in save-the-date emails |
 | save_the_date_text | text | nullable; optional custom body text for save-the-date messages |
 | faq | jsonb | array of `{question, answer}` |
-| status | enum | `draft \| published \| cancelled \| archived` |
+| status | enum | `draft \| published \| archived` |
 | social_sharing_enabled | boolean | default false; show/hide social share buttons on public page |
-| link_active | boolean | default true; set false on cancel/archive to 404 public page |
+| link_active | boolean | default true; set false on archive to 404 public page |
 | archived_at | timestamptz | set when admin manually archives |
 | created_by | uuid | fk → auth.users |
 | created_at | timestamptz | default now() |
@@ -282,7 +282,7 @@ RLS: service-role only (records written server-side during checkout).
 | Route | Description |
 |-------|-------------|
 | `/admin` | Dashboard — upcoming events, quick stats |
-| `/admin/events` | All events (draft, published, cancelled, archived) |
+| `/admin/events` | All events (draft, published, archived) |
 | `/admin/events/new` | Create event wizard |
 | `/admin/events/[id]` | Edit event details |
 | `/admin/events/[id]/tiers` | Manage ticket tiers, pricing, per-tier limits |
@@ -399,16 +399,15 @@ From `/admin/events/[id]/contacts`:
 
 ---
 
-### 6.6 Cancel Event
+### 6.6 Delete Event
 
-Available on the Details tab (`/admin/events/[id]`) in a "Danger Zone" section when the event status is `draft` or `published`.
+Available on the Details tab (`/admin/events/[id]`) in a "Danger Zone" section for any event status.
 
-- Admin clicks "Cancel Event" → confirmation dialog warns that the action cannot be undone
-- Sets: `status = cancelled`, `is_published = false`, `link_active = false`
-- Public landing page immediately returns 404
-- Event remains visible in admin (Details tab shows read-only view with cancelled banner; all form fields disabled)
-- Events list includes a "Cancelled" filter tab; cancelled events display a red `destructive` badge
-- **Not reversible** — unlike archiving, cancellation cannot be undone
+- Admin clicks "Delete Event" → confirmation dialog requires typing the event title to confirm
+- Permanently deletes: tickets, ticket tiers (CASCADE), contacts, CSV imports, invitation logs, and storage files
+- Cleans up all files under `event-assets/{eventId}/` in Supabase Storage
+- Redirects to `/admin/events` on success
+- **Not reversible** — all event data is permanently removed from the database
 
 ---
 
@@ -621,4 +620,4 @@ All email templates built in **Resend React Email** format. Must be responsive a
 - **Storage buckets.** Use `event-assets` bucket. Images: public. CSVs: private, access via signed URLs only.
 - **Error shape.** All server actions return `{ success: boolean, data?: T, error?: string }`. Never throw to client.
 - **Post-event page.** Only render if `date_end < now()`. Show disabled/countdown state otherwise.
-- **Archiving & Cancellation.** The "Archive Event" and "Cancel Event" actions set `link_active = false`. Do not auto-archive or auto-cancel based on date without admin confirmation.
+- **Archiving & Deletion.** The "Archive Event" action sets `link_active = false`. The "Delete Event" action permanently removes all event data. Do not auto-archive based on date without admin confirmation.
