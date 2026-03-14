@@ -291,10 +291,14 @@ export default async function EventPage({ params }: EventPageProps) {
           </section>
         )}
 
-        {/* Privacy policy */}
+        {/* Legal links */}
         <p className="pb-8 text-center text-xs text-muted-foreground">
           <Link href="/privacy-policy" className="hover:underline">
             Privacy Policy
+          </Link>
+          <span className="mx-2">·</span>
+          <Link href="/terms" className="hover:underline">
+            Terms and Conditions
           </Link>
         </p>
       </div>
