@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { deleteEvent } from './actions';
+import { deleteEvent } from '@/app/admin/events/[id]/actions';
 
 interface DeleteEventButtonProps {
   eventId: string;

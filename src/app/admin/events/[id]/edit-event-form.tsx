@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { AlertTriangle, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -33,7 +33,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ImageUpload } from '@/components/image-upload';
-import { updateEvent, cancelEvent } from './actions';
+import { updateEvent, deleteEvent } from './actions';
 import type { Event, EventType } from '@/types/database';
 
 const EVENT_TYPE_OPTIONS: { value: EventType; label: string }[] = [
@@ -65,6 +65,8 @@ interface FormData {
   host_bio_headline: string;
   cover_image_url: string | null;
   gallery_urls: string[];
+  save_the_date_image_url: string | null;
+  save_the_date_text: string;
   social_sharing_enabled: boolean;
 }
 
@@ -88,14 +90,17 @@ export function EditEventForm({ event }: EditEventFormProps) {
     host_bio_headline: event.host_bio_headline ?? 'About the Host',
     cover_image_url: event.cover_image_url ?? null,
     gallery_urls: event.gallery_urls ?? [],
+    save_the_date_image_url: event.save_the_date_image_url ?? null,
+    save_the_date_text: event.save_the_date_text ?? '',
     social_sharing_enabled: event.social_sharing_enabled,
   });
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const [submittingAs, setSubmittingAs] = useState<'draft' | 'publish' | null>(null);
-  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
-  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
 
   function updateField<K extends keyof FormData>(key: K, value: FormData[K]) {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -159,6 +164,8 @@ export function EditEventForm({ event }: EditEventFormProps) {
         : null,
       cover_image_url: formData.cover_image_url,
       gallery_urls: formData.gallery_urls,
+      save_the_date_image_url: formData.save_the_date_image_url,
+      save_the_date_text: formData.save_the_date_text.trim() || null,
       social_sharing_enabled: formData.social_sharing_enabled,
       publish,
     });
@@ -173,17 +180,15 @@ export function EditEventForm({ event }: EditEventFormProps) {
     setSubmittingAs(null);
   }
 
-  async function handleCancel() {
-    setCancelling(true);
-    setCancelError(null);
+  async function handleDelete() {
+    setDeleting(true);
+    setDeleteError(null);
 
-    const result = await cancelEvent(event.id);
-
-    setCancelling(false);
-    setCancelDialogOpen(false);
+    const result = await deleteEvent(event.id);
 
     if (!result.success) {
-      setCancelError(result.error ?? 'Failed to cancel event.');
+      setDeleteError(result.error ?? 'Failed to delete event.');
+      setDeleting(false);
       return;
     }
 
@@ -191,25 +196,14 @@ export function EditEventForm({ event }: EditEventFormProps) {
   }
 
   const isDraft = event.status === 'draft';
-  const isCancelled = event.status === 'cancelled';
-  const canCancel = event.status === 'draft' || event.status === 'published';
 
   return (
     <>
-      {isCancelled && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          This event has been cancelled. It is no longer visible to the public.
-        </div>
-      )}
-
       <Card>
         <CardHeader>
           <CardTitle>Event Details</CardTitle>
           <CardDescription>
-            {isCancelled
-              ? 'This event has been cancelled and cannot be edited.'
-              : 'Update the event information below.'}
+            Update the event information below.
           </CardDescription>
           {event.status === 'published' && (
             <Link
@@ -223,7 +217,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
           )}
         </CardHeader>
         <CardContent>
-          <fieldset disabled={isCancelled} className="space-y-4">
+          <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="title">
                 Title <span className="text-destructive">*</span>
@@ -245,7 +239,6 @@ export function EditEventForm({ event }: EditEventFormProps) {
                 onValueChange={(value) =>
                   updateField('event_type', value as EventType)
                 }
-                disabled={isCancelled}
               >
                 <SelectTrigger id="event_type">
                   <SelectValue placeholder="Select event type" />
@@ -363,6 +356,37 @@ export function EditEventForm({ event }: EditEventFormProps) {
               />
             </div>
 
+            {/* Save the Date */}
+            <div className="space-y-2 rounded-lg border p-4">
+              <Label className="text-base font-semibold">Save the Date</Label>
+              <p className="text-muted-foreground text-sm">
+                Optional image and text for save-the-date messages.
+              </p>
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label>Image</Label>
+                  <ImageUpload
+                    eventId={event.id}
+                    type="cover"
+                    currentUrl={formData.save_the_date_image_url}
+                    onUpload={(url) => updateField('save_the_date_image_url', url)}
+                    onRemove={() => updateField('save_the_date_image_url', null)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="save_the_date_text">Additional Text</Label>
+                  <Textarea
+                    id="save_the_date_text"
+                    placeholder="Add any extra details for the save-the-date message..."
+                    rows={3}
+                    value={formData.save_the_date_text}
+                    onChange={(e) => updateField('save_the_date_text', e.target.value)}
+                    maxLength={2000}
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Cover Image */}
             <div className="space-y-2">
               <Label>Cover Image</Label>
@@ -419,7 +443,6 @@ export function EditEventForm({ event }: EditEventFormProps) {
                 id="social_sharing_enabled"
                 checked={formData.social_sharing_enabled}
                 onCheckedChange={(checked) => updateField('social_sharing_enabled', checked)}
-                disabled={isCancelled}
               />
             </div>
 
@@ -427,8 +450,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
               <p className="text-sm text-destructive">{error}</p>
             )}
 
-            {!isCancelled && (
-              <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2">
                 {isDraft ? (
                   <>
                     <Button
@@ -463,62 +485,75 @@ export function EditEventForm({ event }: EditEventFormProps) {
                   </>
                 )}
               </div>
-            )}
-          </fieldset>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Danger Zone — only for draft or published events */}
-      {canCancel && (
-        <Card className="mt-6 border-destructive/50">
-          <CardHeader>
-            <CardTitle className="text-destructive">Danger Zone</CardTitle>
-            <CardDescription>
-              Cancelling deactivates the public event page and prevents further
-              ticket sales. This cannot be undone.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {cancelError && (
-              <p className="mb-3 text-sm text-destructive">{cancelError}</p>
-            )}
-            <Button
-              variant="destructive"
-              onClick={() => setCancelDialogOpen(true)}
-            >
-              Cancel Event
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      {/* Danger Zone */}
+      <Card className="mt-6 border-destructive/50">
+        <CardHeader>
+          <CardTitle className="text-destructive">Danger Zone</CardTitle>
+          <CardDescription>
+            This will permanently delete this event and all associated files and
+            records. All tickets, contacts, and invitation history will be
+            removed. This action cannot be undone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {deleteError && (
+            <p className="mb-3 text-sm text-destructive">{deleteError}</p>
+          )}
+          <Button
+            variant="destructive"
+            onClick={() => setDeleteDialogOpen(true)}
+          >
+            Delete Event
+          </Button>
+        </CardContent>
+      </Card>
 
-      {/* Cancel confirmation dialog */}
-      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={(v) => {
+        setDeleteDialogOpen(v);
+        if (!v) {
+          setDeleteConfirmation('');
+          setDeleteError(null);
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Cancel Event</DialogTitle>
+            <DialogTitle>Delete Event</DialogTitle>
             <DialogDescription>
-              Are you sure you want to cancel this event?
+              This will permanently delete the event and all associated data
+              including tickets, contacts, and invitation history. This cannot
+              be undone.
             </DialogDescription>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            This will deactivate the public event page so visitors can no longer
-            view or purchase tickets. This action cannot be undone.
-          </p>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Type <span className="font-semibold text-foreground">{event.title}</span> to confirm.
+            </p>
+            <Input
+              value={deleteConfirmation}
+              onChange={(e) => setDeleteConfirmation(e.target.value)}
+              placeholder="Event title"
+              disabled={deleting}
+            />
+          </div>
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setCancelDialogOpen(false)}
-              disabled={cancelling}
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
             >
-              Keep Event
+              Cancel
             </Button>
             <Button
               variant="destructive"
-              onClick={handleCancel}
-              disabled={cancelling}
+              onClick={handleDelete}
+              disabled={deleteConfirmation !== event.title || deleting}
             >
-              {cancelling ? 'Cancelling...' : 'Cancel Event'}
+              {deleting ? 'Deleting...' : 'Delete permanently'}
             </Button>
           </DialogFooter>
         </DialogContent>
