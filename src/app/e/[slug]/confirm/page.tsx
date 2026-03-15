@@ -81,6 +81,9 @@ export default async function ConfirmPage({
           <h1 className="text-2xl font-bold">You&apos;re confirmed!</h1>
           <p className="text-muted-foreground text-sm">
             Your tickets for {event.title} are reserved.
+            {firstTicket.attendee_email && (
+              <> A confirmation has been sent to {firstTicket.attendee_email}.</>
+            )}
           </p>
         </div>
       </div>
