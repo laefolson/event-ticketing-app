@@ -135,9 +135,11 @@ export function TicketPdf({
   ticketQrEnabled,
   qrDataUrl,
 }: TicketPdfProps) {
+  const pageHeight = ticketQrEnabled && qrDataUrl ? 340 : 300;
+
   return (
     <Document>
-      <Page size={{ width: 420, height: 300 }} style={styles.page}>
+      <Page size={{ width: 420, height: pageHeight }} style={{ ...styles.page, height: pageHeight }}>
         {coverImageUrl ? (
           <Image src={coverImageUrl} style={styles.coverImage} />
         ) : (
