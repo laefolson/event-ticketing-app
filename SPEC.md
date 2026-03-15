@@ -194,7 +194,7 @@ RLS must be enabled on all tables.
 | attendee_name | text | |
 | attendee_email | text | |
 | attendee_phone | text | |
-| ticket_code | text | unique UUID; displayed as text in Phase 1; QR in Phase 2 |
+| ticket_code | text | unique short code; displayed as text or QR (per-event toggle) |
 | quantity | integer | default 1; number of people this ticket covers |
 | stripe_payment_intent_id | text | nullable for free |
 | stripe_session_id | text | |
@@ -353,9 +353,10 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
   - Event name, date, location
   - Attendee name
   - Tier name and quantity
-  - Ticket code (text only in Phase 1)
-- "Download Ticket" button — renders card to PNG via html2canvas
-- _(Phase 2: QR code image, Apple Wallet button)_
+  - Ticket code (text code or QR code based on per-event `ticket_qr_enabled` toggle)
+  - QR code encodes verification URL: `/e/[slug]/verify/[ticket_code]`
+- "Download Ticket" button — generates PDF via `@react-pdf/renderer`
+- _(Phase 2: Apple Wallet button)_
 
 ---
 
@@ -584,7 +585,7 @@ All email templates built in **Resend React Email** format. Must be responsive a
 
 ## 12. Phase 2 Backlog
 
-- [ ] QR code image on ticket (encode `ticket_code` as scannable QR)
+- [x] QR code image on ticket (per-event toggle; encodes verification URL)
 - [ ] Apple Wallet `.pkpass` ticket generation with QR code
 - [ ] QR scan check-in at the door via device camera
 - [ ] Scheduled invitation sending (future date/time)
@@ -611,8 +612,8 @@ All email templates built in **Resend React Email** format. Must be responsive a
 - **shadcn/ui** for all UI components (`npx shadcn@latest init`).
 - **Dates.** Store all dates in UTC. Display in local time with `date-fns-tz`.
 - **Slugs.** Generate as `kebab-case-title` + `-` + 6 random alphanumeric chars.
-- **Ticket code.** Store as UUID on creation. Display as plain text in Phase 1. Leave a commented `// TODO Phase 2: render QR image here` placeholder on the confirmation component.
-- **Ticket card (Phase 1).** Build as a styled React component; use html2canvas to export as PNG. Keep the component clean for Phase 2 QR addition.
+- **Ticket code.** Store as short code on creation. Display as plain text or QR code based on per-event `ticket_qr_enabled` toggle. QR encodes `/e/[slug]/verify/[ticket_code]` and is generated on-the-fly via the `qrcode` library.
+- **Ticket card.** Built as a styled React component; PDF download via `@react-pdf/renderer`. QR code appears on confirmation page, PDF, and email when enabled.
 - **CSV parsing.** Use Papa Parse server-side. Stream files > 1MB; don't load entirely into memory.
 - **Multiple CSV uploads.** Process each file independently. Deduplicate against existing contacts for that event after each import.
 - **`max_per_contact` enforcement.** Before creating a Stripe session or RSVP, query: `SELECT SUM(quantity) FROM tickets WHERE event_id = X AND tier_id = Y AND (attendee_email = Z OR attendee_phone = W) AND status != 'cancelled'`. Reject with a clear error if `sum + requested_quantity > max_per_contact`.
