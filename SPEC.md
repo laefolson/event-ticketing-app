@@ -420,7 +420,7 @@ Available at `/admin/events/[id]/post-event` once `date_end` has passed.
 
 **Thank-you messages:**
 - Send to all confirmed/attended ticket holders
-- Email: customizable body; defaults to "Thank you for joining us at [Event]..."
+- Email: customizable body; defaults to "Thank you for joining us at [Event]...". Includes the event cover image as a hero at the top when available.
 - SMS: `"Thank you for attending [Event Title]! Hope to see you next time."`
 - Channel follows each contact's `invitation_channel` setting
 - Preview before sending; logged with `message_type = thank_you`
