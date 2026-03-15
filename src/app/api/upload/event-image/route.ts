@@ -22,6 +22,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Verify user is a team member
+  const { data: member } = await supabase
+    .from('team_members')
+    .select('id')
+    .eq('user_id', user.id)
+    .single();
+
+  if (!member) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const formData = await request.formData();
   const file = formData.get('file') as File | null;
   const eventId = formData.get('eventId') as string | null;

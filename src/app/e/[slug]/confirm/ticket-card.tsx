@@ -37,7 +37,7 @@ export function TicketCard({
     setDownloading(true);
 
     try {
-      const res = await fetch(`/api/tickets/${ticketId}/pdf`);
+      const res = await fetch(`/api/tickets/${ticketId}/pdf?code=${encodeURIComponent(ticketCode)}`);
       if (!res.ok) throw new Error('PDF generation failed');
 
       const blob = await res.blob();

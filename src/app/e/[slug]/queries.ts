@@ -1,5 +1,6 @@
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import type { Event, Ticket, TicketTier } from '@/types/database';
 
 export const getEventBySlug = cache(async (slug: string): Promise<Event | null> => {
@@ -25,7 +26,7 @@ export const getTiersForEvent = cache(async (eventId: string): Promise<TicketTie
 });
 
 export const getTicketById = cache(async (ticketId: string): Promise<(Ticket & { tier_name: string }) | null> => {
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   const { data } = await supabase
     .from('tickets')
     .select('*, ticket_tiers!inner(name)')
@@ -37,7 +38,7 @@ export const getTicketById = cache(async (ticketId: string): Promise<(Ticket & {
 });
 
 export const getTicketsBySessionId = cache(async (sessionId: string): Promise<(Ticket & { tier_name: string })[]> => {
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   const { data } = await supabase
     .from('tickets')
     .select('*, ticket_tiers!inner(name)')

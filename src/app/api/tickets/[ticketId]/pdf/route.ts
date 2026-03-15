@@ -7,10 +7,17 @@ import { TicketPdf } from '@/lib/pdf/ticket-pdf';
 import { generateQrDataUrl } from '@/lib/qr';
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
   const { ticketId } = await params;
+
+  // Require ticket code as proof of ownership
+  const { searchParams } = new URL(request.url);
+  const code = searchParams.get('code');
+  if (!code) {
+    return NextResponse.json({ error: 'Missing ticket code' }, { status: 401 });
+  }
 
   const supabase = createServiceClient();
 
@@ -23,6 +30,11 @@ export async function GET(
 
   if (!ticketData) {
     return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
+  }
+
+  // Verify the provided code matches the ticket
+  if ((ticketData as Record<string, unknown>).ticket_code !== code) {
+    return NextResponse.json({ error: 'Invalid ticket code' }, { status: 403 });
   }
 
   const { ticket_tiers, ...ticket } = ticketData as Record<string, unknown> & {

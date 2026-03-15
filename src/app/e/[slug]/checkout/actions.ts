@@ -91,6 +91,9 @@ export async function createCheckoutSession(
   // Build a lookup map
   const tierMap = new Map(tiers.map((t) => [t.id, t]));
 
+  // Use service client for all ticket operations (no public RLS policies on tickets)
+  const serviceClient = createServiceClient();
+
   // Validate each item
   for (const item of items) {
     const tier = tierMap.get(item.tier_id);
@@ -117,9 +120,9 @@ export async function createCheckoutSession(
       };
     }
 
-    // Check existing tickets against max_per_contact
+    // Check existing tickets against max_per_contact (use service client — no public SELECT on tickets)
     if (tier.max_per_contact !== null) {
-      const { data: existingTickets } = await supabase
+      const { data: existingTickets } = await serviceClient
         .from('tickets')
         .select('quantity')
         .eq('tier_id', tier.id)
@@ -150,8 +153,6 @@ export async function createCheckoutSession(
     return sum + tier.price_cents * item.quantity;
   }, 0);
 
-  const serviceClient = createServiceClient();
-
   // Insert one ticket per item
   const ticketInserts = items.map((item) => ({
     event_id,
@@ -168,7 +169,7 @@ export async function createCheckoutSession(
     stripe_session_id: null,
   }));
 
-  const { data: tickets, error: insertError } = await supabase
+  const { data: tickets, error: insertError } = await serviceClient
     .from('tickets')
     .insert(ticketInserts)
     .select('id, tier_id, ticket_code');

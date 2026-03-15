@@ -85,9 +85,11 @@ export async function submitRsvp(
     };
   }
 
-  // Check max_per_contact limit
+  // Check max_per_contact limit (use service client — tickets table has no public SELECT policy)
+  const serviceClient = createServiceClient();
+
   if (tier.max_per_contact !== null && (attendee_email || attendee_phone)) {
-    let query = supabase
+    let query = serviceClient
       .from('tickets')
       .select('quantity')
       .eq('tier_id', tier_id)
@@ -117,8 +119,8 @@ export async function submitRsvp(
     }
   }
 
-  // Insert ticket via anon client (RLS allows insert for public)
-  const { data: ticket, error: insertError } = await supabase
+  // Insert ticket via service client (no public INSERT RLS policy)
+  const { data: ticket, error: insertError } = await serviceClient
     .from('tickets')
     .insert({
       event_id,
@@ -141,8 +143,7 @@ export async function submitRsvp(
     return { success: false, error: 'Failed to create ticket. Please try again.' };
   }
 
-  // Atomically increment quantity_sold via RPC (bypasses RLS)
-  const serviceClient = createServiceClient();
+  // Atomically increment quantity_sold via RPC
   const { error: rpcError } = await serviceClient
     .rpc('adjust_quantity_sold', { p_tier_id: tier.id, p_delta: quantity });
 
