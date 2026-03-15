@@ -41,7 +41,7 @@ export function SaveTheDateEmail({
 }
 
 const heading: React.CSSProperties = {
-  color: '#1c1917',
+  color: '#633806',
   fontSize: '24px',
   fontWeight: '700',
   lineHeight: '1.3',
@@ -49,7 +49,7 @@ const heading: React.CSSProperties = {
 };
 
 const paragraph: React.CSSProperties = {
-  color: '#44403c',
+  color: '#2c2a24',
   fontSize: '16px',
   lineHeight: '1.6',
   margin: '0 0 12px',

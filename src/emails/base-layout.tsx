@@ -42,7 +42,7 @@ export function BaseLayout({ preview, venueName, children }: BaseLayoutProps) {
 }
 
 const body: React.CSSProperties = {
-  backgroundColor: '#fafaf9',
+  backgroundColor: '#fdf9f0',
   fontFamily:
     '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
   margin: 0,
@@ -51,7 +51,7 @@ const body: React.CSSProperties = {
 
 const container: React.CSSProperties = {
   backgroundColor: '#ffffff',
-  border: '1px solid #e7e5e4',
+  border: '1px solid #e8e5da',
   borderRadius: '8px',
   margin: '40px auto',
   maxWidth: '560px',
@@ -59,13 +59,13 @@ const container: React.CSSProperties = {
 };
 
 const header: React.CSSProperties = {
-  backgroundColor: '#1c1917',
+  backgroundColor: '#5597bb',
   borderRadius: '8px 8px 0 0',
   padding: '24px 32px',
 };
 
 const headerText: React.CSSProperties = {
-  color: '#fafaf9',
+  color: '#ffffff',
   fontSize: '20px',
   fontWeight: '700',
   letterSpacing: '-0.02em',
@@ -77,8 +77,8 @@ const content: React.CSSProperties = {
 };
 
 const divider: React.CSSProperties = {
-  borderColor: '#e7e5e4',
-  borderTop: '1px solid #e7e5e4',
+  borderColor: '#e8e5da',
+  borderTop: '1px solid #e8e5da',
   margin: '0',
 };
 
@@ -87,7 +87,7 @@ const footer: React.CSSProperties = {
 };
 
 const footerText: React.CSSProperties = {
-  color: '#a8a29e',
+  color: '#b4b2a9',
   fontSize: '12px',
   margin: 0,
   textAlign: 'center' as const,

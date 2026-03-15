@@ -50,7 +50,7 @@ export function InvitationEmail({
 }
 
 const heading: React.CSSProperties = {
-  color: '#1c1917',
+  color: '#633806',
   fontSize: '24px',
   fontWeight: '700',
   lineHeight: '1.3',
@@ -58,22 +58,22 @@ const heading: React.CSSProperties = {
 };
 
 const paragraph: React.CSSProperties = {
-  color: '#44403c',
+  color: '#2c2a24',
   fontSize: '16px',
   lineHeight: '1.6',
   margin: '0 0 12px',
 };
 
 const detailsBox: React.CSSProperties = {
-  backgroundColor: '#fafaf9',
-  border: '1px solid #e7e5e4',
+  backgroundColor: '#fdf9f0',
+  border: '1px solid #e8e5da',
   borderRadius: '6px',
   margin: '20px 0',
   padding: '16px 20px',
 };
 
 const detailLabel: React.CSSProperties = {
-  color: '#78716c',
+  color: '#5f5c55',
   fontSize: '12px',
   fontWeight: '600',
   letterSpacing: '0.05em',
@@ -82,7 +82,7 @@ const detailLabel: React.CSSProperties = {
 };
 
 const detailValue: React.CSSProperties = {
-  color: '#1c1917',
+  color: '#2c2a24',
   fontSize: '15px',
   fontWeight: '500',
   margin: '0 0 12px',
@@ -94,9 +94,9 @@ const ctaSection: React.CSSProperties = {
 };
 
 const ctaButton: React.CSSProperties = {
-  backgroundColor: '#1c1917',
+  backgroundColor: '#5597bb',
   borderRadius: '6px',
-  color: '#fafaf9',
+  color: '#ffffff',
   display: 'inline-block',
   fontSize: '15px',
   fontWeight: '600',
@@ -105,7 +105,7 @@ const ctaButton: React.CSSProperties = {
 };
 
 const footnote: React.CSSProperties = {
-  color: '#a8a29e',
+  color: '#b4b2a9',
   fontSize: '12px',
   lineHeight: '1.5',
   margin: '16px 0 0',
