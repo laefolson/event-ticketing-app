@@ -77,27 +77,27 @@ A full-stack web app for a private barn event center to create, manage, and arch
 
 | Token                  | Hex       | Usage                                      |
 |------------------------|-----------|--------------------------------------------|
-| `--color-primary`      | `#bad1b1` | Buttons, active nav, primary actions       |
-| `--color-primary-light`| `#eaf3e8` | Card backgrounds, input focus rings        |
-| `--color-primary-mid`  | `#8aaa80` | Hover states on primary elements           |
-| `--color-primary-dark` | `#4e7a44` | Pressed states, text on light green bg     |
-| `--color-primary-deep` | `#1a3a0f` | Headings, logo text                        |
+| `--color-primary`      | `#f1e5bc` | Buttons, active nav, primary actions       |
+| `--color-primary-light`| `#fdf9f0` | Card backgrounds, input focus rings        |
+| `--color-primary-mid`  | `#d4c07a` | Hover states on primary elements           |
+| `--color-primary-dark` | `#a08835` | Pressed states, text on light primary bg   |
+| `--color-primary-deep` | `#633806` | Headings, logo text                        |
 | `--color-sky`          | `#d8e9f3` | Info banners, ticket tier highlights       |
 | `--color-sky-dark`     | `#5597bb` | Links, info text                           |
 | `--color-accent`       | `#f3bbb1` | CTAs, checkout button, sold-out badges     |
 | `--color-accent-dark`  | `#b84e3a` | Hover on accent elements                   |
-| `--color-straw`        | `#f1e5bc` | Event banners, featured callouts           |
-| `--color-straw-dark`   | `#a08835` | Text on straw backgrounds                  |
+| `--color-sage`         | `#bad1b1` | Event banners, featured callouts           |
+| `--color-sage-dark`    | `#4e7a44` | Text on sage backgrounds                   |
 
 ### Neutrals
 
 | Token                       | Hex       | Usage                          |
 |-----------------------------|-----------|--------------------------------|
-| `--color-bg-page`           | `#f5f5f0` | Page background                |
+| `--color-bg-page`           | `#f7f5ef` | Page background                |
 | `--color-bg-surface`        | `#ffffff` | Cards, modals, inputs          |
-| `--color-border`            | `#e8e8e2` | Card borders, dividers         |
-| `--color-text-primary`      | `#2c2c2a` | Body text, headings            |
-| `--color-text-secondary`    | `#5f5e5a` | Labels, metadata, placeholders |
+| `--color-border`            | `#e8e5da` | Card borders, dividers         |
+| `--color-text-primary`      | `#2c2a24` | Body text, headings            |
+| `--color-text-secondary`    | `#5f5c55` | Labels, metadata, placeholders |
 | `--color-text-muted`        | `#b4b2a9` | Disabled states, hints         |
 
 ### Status Colors
