@@ -90,7 +90,7 @@ export default async function ConfirmPage({
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground text-sm">Status</span>
             <Badge variant="secondary" className="capitalize">
-              {firstTicket.status}
+              {session_id && firstTicket.status === 'pending' ? 'confirmed' : firstTicket.status}
             </Badge>
           </div>
 

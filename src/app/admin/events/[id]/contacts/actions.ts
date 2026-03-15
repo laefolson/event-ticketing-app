@@ -723,7 +723,6 @@ export async function sendSaveTheDates(
       const emailResult = await sendEmail({
         to: contact.email,
         subject: emailSubject,
-        fromName: 'Blue Barn Events',
         react: SaveTheDateEmail({
           firstName,
           eventTitle: event.title,

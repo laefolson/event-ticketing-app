@@ -8,7 +8,6 @@ interface SendEmailInput {
   subject: string;
   html?: string;
   react?: React.ReactElement;
-  fromName?: string;
 }
 
 interface SendEmailResult {
@@ -17,19 +16,19 @@ interface SendEmailResult {
   error?: string;
 }
 
+const FROM = 'Over Yonder Farm <info@events.yonderfarm.com>';
+const REPLY_TO = 'info@yonderfarm.com';
+
 export async function sendEmail({
   to,
   subject,
   html,
   react,
-  fromName,
 }: SendEmailInput): Promise<SendEmailResult> {
-  const fromEmail = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev';
-  const from = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
-
   try {
     const { data, error } = await resend.emails.send({
-      from,
+      from: FROM,
+      replyTo: REPLY_TO,
       to,
       subject,
       ...(react ? { react } : { html: html ?? '' }),
