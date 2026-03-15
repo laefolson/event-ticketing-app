@@ -1,4 +1,4 @@
-import { Text } from '@react-email/components';
+import { Img, Text } from '@react-email/components';
 import * as React from 'react';
 import { BaseLayout } from './base-layout';
 
@@ -7,6 +7,7 @@ interface ThankYouEmailProps {
   eventTitle: string;
   customBody: string;
   venueName: string;
+  coverImageUrl?: string | null;
 }
 
 export function ThankYouEmail({
@@ -14,9 +15,18 @@ export function ThankYouEmail({
   eventTitle,
   customBody,
   venueName,
+  coverImageUrl,
 }: ThankYouEmailProps) {
   return (
     <BaseLayout preview={`Thank you for attending ${eventTitle}`} venueName={venueName}>
+      {coverImageUrl && (
+        <Img
+          src={coverImageUrl}
+          alt={eventTitle}
+          width="100%"
+          style={heroImage}
+        />
+      )}
       <Text style={heading}>Thank You!</Text>
       <Text style={paragraph}>Hi {firstName},</Text>
       {customBody.split('\n').map((line, i) => (
@@ -27,6 +37,12 @@ export function ThankYouEmail({
     </BaseLayout>
   );
 }
+
+const heroImage: React.CSSProperties = {
+  width: '100%',
+  borderRadius: '4px',
+  marginBottom: '24px',
+};
 
 const heading: React.CSSProperties = {
   color: '#1c1917',

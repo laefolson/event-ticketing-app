@@ -209,7 +209,7 @@ export async function sendThankYouMessages(
   // Verify event exists and has ended
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, title, date_end')
+    .select('id, title, date_end, cover_image_url')
     .eq('id', eventId)
     .single();
 
@@ -260,6 +260,7 @@ export async function sendThankYouMessages(
           eventTitle: event.title,
           customBody: emailBody,
           venueName,
+          coverImageUrl: event.cover_image_url,
         }),
       });
     } else if (recipient.channel === 'sms' && recipient.phone) {
