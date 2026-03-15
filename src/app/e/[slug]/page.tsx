@@ -14,6 +14,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { ShareButtons } from '@/components/share-buttons';
+import { ResendTicketsForm } from './resend-tickets-form';
 import { getEventBySlug, getTiersForEvent } from './queries';
 import type { TicketTier } from '@/types/database';
 import type { Metadata } from 'next';
@@ -290,6 +291,9 @@ export default async function EventPage({ params }: EventPageProps) {
             </Accordion>
           </section>
         )}
+
+        {/* Resend tickets */}
+        <ResendTicketsForm slug={slug} />
 
         {/* Legal links */}
         <p className="pb-8 text-center text-xs text-muted-foreground">
