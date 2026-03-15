@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { format } from 'date-fns';
+import sharp from 'sharp';
 import { createServiceClient } from '@/lib/supabase/service';
 import { TicketPdf } from '@/lib/pdf/ticket-pdf';
 import { generateQrDataUrl } from '@/lib/qr';
@@ -53,6 +54,22 @@ export async function GET(
     qrDataUrl = await generateQrDataUrl(verifyUrl);
   }
 
+  // react-pdf doesn't support WebP — convert cover image to PNG
+  let coverImageSrc: string | null = null;
+  const coverUrl = event.cover_image_url as string | null;
+  if (coverUrl) {
+    try {
+      const res = await fetch(coverUrl);
+      if (res.ok) {
+        const imgBuffer = Buffer.from(await res.arrayBuffer());
+        const pngBuffer = await sharp(imgBuffer).png().toBuffer();
+        coverImageSrc = `data:image/png;base64,${pngBuffer.toString('base64')}`;
+      }
+    } catch {
+      // Fall back to no cover image
+    }
+  }
+
   const pdfBuffer = await renderToBuffer(
     TicketPdf({
       eventTitle: event.title as string,
@@ -62,7 +79,7 @@ export async function GET(
       tierName,
       quantity: ticket.quantity as number,
       ticketCode: ticket.ticket_code as string,
-      coverImageUrl: event.cover_image_url as string | null,
+      coverImageUrl: coverImageSrc,
       ticketQrEnabled,
       qrDataUrl,
     })
