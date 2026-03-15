@@ -15,6 +15,7 @@ import {
   Mail,
   MessageSquare,
   Repeat2,
+  CalendarHeart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -50,9 +51,10 @@ import {
   deleteContact,
   importContacts,
   sendInvitations,
+  sendSaveTheDates,
   bulkUpdateContactChannel,
 } from './actions';
-import type { ContactInput, CsvRow, ImportResult, InvitationScope, InvitationResult } from './actions';
+import type { ContactInput, CsvRow, ImportResult, InvitationScope, InvitationResult, SaveTheDateScope, SaveTheDateResult } from './actions';
 import type { Contact, CsvImport, InvitationChannel } from '@/types/database';
 import { format } from 'date-fns';
 
@@ -159,6 +161,12 @@ export function ContactsManager({
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteResult, setInviteResult] = useState<InvitationResult | null>(null);
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
+
+  // Save the Date dialog state
+  const [stdDialogOpen, setStdDialogOpen] = useState(false);
+  const [stdScope, setStdScope] = useState<SaveTheDateScope>('uninvited');
+  const [stdSending, setStdSending] = useState(false);
+  const [stdResult, setStdResult] = useState<SaveTheDateResult | null>(null);
 
   // Channel reassignment dialog state
   const [channelDialogOpen, setChannelDialogOpen] = useState(false);
@@ -397,6 +405,50 @@ export function ContactsManager({
     }
   }
 
+  // Save the Date handlers
+  const stdCounts = useMemo(() => {
+    let targetContacts: Contact[];
+    if (stdScope === 'all') {
+      targetContacts = contacts.filter((c) => c.invitation_channel !== 'none');
+    } else if (stdScope === 'uninvited') {
+      targetContacts = contacts.filter((c) => c.invitation_channel !== 'none' && !c.invited_at);
+    } else {
+      targetContacts = contacts.filter((c) => selectedContactIds.has(c.id) && c.invitation_channel !== 'none');
+    }
+    const emailCount = targetContacts.filter((c) => (c.invitation_channel === 'email' || c.invitation_channel === 'both') && c.email).length;
+    const smsCount = targetContacts.filter((c) => (c.invitation_channel === 'sms' || c.invitation_channel === 'both') && c.phone).length;
+    return { total: targetContacts.length, emailCount, smsCount };
+  }, [contacts, stdScope, selectedContactIds]);
+
+  function openStdDialog() {
+    setStdScope('uninvited');
+    setStdResult(null);
+    setStdDialogOpen(true);
+  }
+
+  async function handleSendSaveTheDates() {
+    setStdSending(true);
+    const result = await sendSaveTheDates({
+      eventId,
+      scope: stdScope,
+      contactIds: stdScope === 'selected' ? Array.from(selectedContactIds) : undefined,
+    });
+    setStdSending(false);
+
+    if (result.success && result.data) {
+      setStdResult(result.data);
+    } else {
+      setStdResult({ sent: 0, failed: 0, failedDetails: [result.error ?? 'Failed to send save-the-dates'] });
+    }
+  }
+
+  function closeStdDialog() {
+    setStdDialogOpen(false);
+    if (stdResult) {
+      router.refresh();
+    }
+  }
+
   // Channel reassignment handlers
   const channelPreviewCount = useMemo(() => {
     if (channelScope === 'all') return contacts.length;
@@ -459,6 +511,10 @@ export function ContactsManager({
               <Button variant="outline" onClick={openChannelDialog}>
                 <Repeat2 className="mr-2 h-4 w-4" />
                 Change Channel
+              </Button>
+              <Button variant="outline" onClick={openStdDialog}>
+                <CalendarHeart className="mr-2 h-4 w-4" />
+                Send Save the Date
               </Button>
               <Button variant="outline" onClick={openInviteDialog}>
                 <Send className="mr-2 h-4 w-4" />
@@ -862,6 +918,107 @@ export function ContactsManager({
                   disabled={inviteSending || inviteCounts.total === 0}
                 >
                   {inviteSending ? 'Sending...' : `Send ${inviteCounts.emailCount + inviteCounts.smsCount} Invitations`}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Save the Date Dialog */}
+      <Dialog open={stdDialogOpen} onOpenChange={(open) => {
+        if (!open) closeStdDialog();
+        else setStdDialogOpen(true);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {stdResult ? 'Save the Dates Sent' : 'Send Save the Date'}
+            </DialogTitle>
+            <DialogDescription>
+              {stdResult
+                ? 'Here are the results of your save-the-date send.'
+                : 'Choose which contacts to send save-the-date messages to.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {stdResult ? (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 rounded-lg border border-green-300 bg-green-50 p-4 dark:border-green-700 dark:bg-green-950">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium text-green-800 dark:text-green-200">
+                    {stdResult.sent} message{stdResult.sent !== 1 ? 's' : ''} sent
+                  </p>
+                  {stdResult.failed > 0 && (
+                    <p className="text-red-700 dark:text-red-300">
+                      {stdResult.failed} failed
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {stdResult.failedDetails.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Failures:</p>
+                  <div className="max-h-40 overflow-y-auto rounded-md border p-3 text-xs">
+                    {stdResult.failedDetails.map((d, i) => (
+                      <div key={i} className="text-muted-foreground py-0.5">
+                        {d}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button onClick={closeStdDialog}>Done</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Who to send to</Label>
+                <Select value={stdScope} onValueChange={(val) => setStdScope(val as SaveTheDateScope)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All contacts</SelectItem>
+                    <SelectItem value="uninvited">Un-invited only</SelectItem>
+                    <SelectItem value="selected">Selected contacts ({selectedContactIds.size})</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="rounded-md border p-4 space-y-2">
+                <p className="text-sm font-medium">Summary</p>
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5" />
+                    {stdCounts.emailCount} email{stdCounts.emailCount !== 1 ? 's' : ''}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    {stdCounts.smsCount} SMS
+                  </span>
+                </div>
+                {stdCounts.total === 0 && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    No contacts match this scope.
+                  </p>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={closeStdDialog} disabled={stdSending}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSendSaveTheDates}
+                  disabled={stdSending || stdCounts.total === 0}
+                >
+                  {stdSending ? 'Sending...' : `Send ${stdCounts.emailCount + stdCounts.smsCount} Messages`}
                 </Button>
               </DialogFooter>
             </div>

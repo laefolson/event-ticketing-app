@@ -8,6 +8,7 @@ interface SendEmailInput {
   subject: string;
   html?: string;
   react?: React.ReactElement;
+  fromName?: string;
 }
 
 interface SendEmailResult {
@@ -21,8 +22,10 @@ export async function sendEmail({
   subject,
   html,
   react,
+  fromName,
 }: SendEmailInput): Promise<SendEmailResult> {
-  const from = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev';
+  const fromEmail = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev';
+  const from = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
 
   try {
     const { data, error } = await resend.emails.send({

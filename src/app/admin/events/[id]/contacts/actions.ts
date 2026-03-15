@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/resend';
 import { sendSms } from '@/lib/twilio';
 import { InvitationEmail } from '@/emails/invitation-email';
+import { SaveTheDateEmail } from '@/emails/save-the-date-email';
 import type { ActionResponse } from '@/types/actions';
 import { getVenueName } from '@/lib/settings';
 import type { InvitationChannel } from '@/types/database';
@@ -621,6 +622,159 @@ export async function sendInvitations(
       .from('contacts')
       .update({ invited_at: new Date().toISOString() })
       .eq('id', contact.id);
+  }
+
+  return { success: true, data: { sent, failed, failedDetails } };
+}
+
+// ── Save the Date Sending ─────────────────────────────────────────────
+
+export type SaveTheDateScope = 'all' | 'uninvited' | 'selected';
+
+const saveTheDateSchema = z.object({
+  eventId: z.string().uuid('Invalid event ID'),
+  scope: z.enum(['all', 'uninvited', 'selected']),
+  contactIds: z.array(z.string().uuid()).optional(),
+});
+
+export type SendSaveTheDatesInput = z.infer<typeof saveTheDateSchema>;
+
+export interface SaveTheDateResult {
+  sent: number;
+  failed: number;
+  failedDetails: string[];
+}
+
+export async function sendSaveTheDates(
+  input: SendSaveTheDatesInput
+): Promise<ActionResponse<SaveTheDateResult>> {
+  const parsed = saveTheDateSchema.safeParse(input);
+  if (!parsed.success) {
+    const firstError = parsed.error.issues[0];
+    return { success: false, error: firstError.message };
+  }
+
+  const { eventId, scope, contactIds } = parsed.data;
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return { success: false, error: 'You must be logged in.' };
+  }
+
+  // Fetch event details
+  const { data: event, error: eventError } = await supabase
+    .from('events')
+    .select('id, title, date_start, save_the_date_image_url, save_the_date_text')
+    .eq('id', eventId)
+    .single();
+
+  if (eventError || !event) {
+    return { success: false, error: 'Event not found.' };
+  }
+
+  // Build contacts query based on scope
+  let query = supabase
+    .from('contacts')
+    .select('id, first_name, last_name, email, phone, invitation_channel')
+    .eq('event_id', eventId)
+    .neq('invitation_channel', 'none');
+
+  if (scope === 'uninvited') {
+    query = query.is('invited_at', null);
+  } else if (scope === 'selected') {
+    if (!contactIds || contactIds.length === 0) {
+      return { success: false, error: 'No contacts selected.' };
+    }
+    query = query.in('id', contactIds);
+  }
+
+  const { data: contacts, error: contactsError } = await query;
+
+  if (contactsError) {
+    return { success: false, error: contactsError.message };
+  }
+
+  if (!contacts || contacts.length === 0) {
+    return { success: false, error: 'No contacts to send save-the-dates to.' };
+  }
+
+  const venueName = await getVenueName();
+  const emailSubject = `Save the Date: ${event.title}`;
+  const dateFormatted = format(new Date(event.date_start), 'MMM d, yyyy');
+  const smsBody = `Save the date! ${event.title} on ${dateFormatted}. More details coming soon.`;
+
+  let sent = 0;
+  let failed = 0;
+  const failedDetails: string[] = [];
+
+  for (const contact of contacts) {
+    const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Guest';
+    const firstName = contact.first_name || 'Guest';
+    const channel = contact.invitation_channel as InvitationChannel;
+
+    // Send email if channel is email or both
+    if ((channel === 'email' || channel === 'both') && contact.email) {
+      const emailResult = await sendEmail({
+        to: contact.email,
+        subject: emailSubject,
+        fromName: 'Blue Barn Events',
+        react: SaveTheDateEmail({
+          firstName,
+          eventTitle: event.title,
+          imageUrl: event.save_the_date_image_url,
+          additionalText: event.save_the_date_text,
+          venueName,
+        }),
+      });
+
+      await supabase.from('invitation_logs').insert({
+        event_id: eventId,
+        contact_id: contact.id,
+        message_type: 'save_the_date',
+        channel: 'email',
+        status: emailResult.success ? 'sent' : 'failed',
+        provider_message_id: emailResult.messageId ?? null,
+      });
+
+      if (emailResult.success) {
+        sent++;
+      } else {
+        failed++;
+        failedDetails.push(`${name} (email): ${emailResult.error}`);
+      }
+    }
+
+    // Send SMS if channel is sms or both
+    if ((channel === 'sms' || channel === 'both') && contact.phone) {
+      const smsResult = await sendSms({
+        to: contact.phone,
+        body: smsBody,
+      });
+
+      await supabase.from('invitation_logs').insert({
+        event_id: eventId,
+        contact_id: contact.id,
+        message_type: 'save_the_date',
+        channel: 'sms',
+        status: smsResult.success ? 'sent' : 'failed',
+        provider_message_id: smsResult.messageId ?? null,
+      });
+
+      if (smsResult.success) {
+        sent++;
+      } else {
+        failed++;
+        failedDetails.push(`${name} (sms): ${smsResult.error}`);
+      }
+    }
+
+    // NOTE: Do NOT update invited_at — that's only for actual invitations
   }
 
   return { success: true, data: { sent, failed, failedDetails } };
