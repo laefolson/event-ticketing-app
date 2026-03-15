@@ -31,6 +31,7 @@ export interface Event {
   save_the_date_text: string | null;
   status: EventStatus;
   social_sharing_enabled: boolean;
+  ticket_qr_enabled: boolean;
   link_active: boolean;
   archived_at: string | null;
   created_by: string;

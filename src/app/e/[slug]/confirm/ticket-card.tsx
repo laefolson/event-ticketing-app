@@ -14,6 +14,8 @@ interface TicketCardProps {
   quantity: number;
   ticketCode: string;
   coverImageUrl: string | null;
+  ticketQrEnabled: boolean;
+  qrDataUrl?: string;
 }
 
 export function TicketCard({
@@ -26,6 +28,8 @@ export function TicketCard({
   quantity,
   ticketCode,
   coverImageUrl,
+  ticketQrEnabled,
+  qrDataUrl,
 }: TicketCardProps) {
   const [downloading, setDownloading] = useState(false);
 
@@ -128,18 +132,36 @@ export function TicketCard({
           {/* Divider */}
           <div className="border-t border-dashed border-stone-300 dark:border-stone-700" />
 
-          {/* Ticket code */}
-          <div className="flex items-center gap-2">
-            <Hash className="h-4 w-4 text-stone-500 dark:text-stone-400" />
-            <div>
-              <p className="text-xs font-medium uppercase tracking-widest text-stone-500 dark:text-stone-400">
-                Ticket Code
-              </p>
-              <p className="font-mono text-lg font-bold tracking-wider text-stone-900 dark:text-stone-50">
-                {ticketCode}
-              </p>
+          {/* Ticket code / QR */}
+          {ticketQrEnabled && qrDataUrl ? (
+            <div className="flex items-center gap-4">
+              <img
+                src={qrDataUrl}
+                alt={`QR code for ticket ${ticketCode}`}
+                className="h-24 w-24"
+              />
+              <div>
+                <p className="text-xs font-medium uppercase tracking-widest text-stone-500 dark:text-stone-400">
+                  Ticket Code
+                </p>
+                <p className="font-mono text-sm font-medium tracking-wider text-stone-700 dark:text-stone-300">
+                  {ticketCode}
+                </p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Hash className="h-4 w-4 text-stone-500 dark:text-stone-400" />
+              <div>
+                <p className="text-xs font-medium uppercase tracking-widest text-stone-500 dark:text-stone-400">
+                  Ticket Code
+                </p>
+                <p className="font-mono text-lg font-bold tracking-wider text-stone-900 dark:text-stone-50">
+                  {ticketCode}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

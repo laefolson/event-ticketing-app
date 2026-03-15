@@ -68,6 +68,7 @@ interface FormData {
   save_the_date_image_url: string | null;
   save_the_date_text: string;
   social_sharing_enabled: boolean;
+  ticket_qr_enabled: boolean;
 }
 
 interface EditEventFormProps {
@@ -93,6 +94,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
     save_the_date_image_url: event.save_the_date_image_url ?? null,
     save_the_date_text: event.save_the_date_text ?? '',
     social_sharing_enabled: event.social_sharing_enabled,
+    ticket_qr_enabled: event.ticket_qr_enabled,
   });
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
@@ -167,6 +169,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
       save_the_date_image_url: formData.save_the_date_image_url,
       save_the_date_text: formData.save_the_date_text.trim() || null,
       social_sharing_enabled: formData.social_sharing_enabled,
+      ticket_qr_enabled: formData.ticket_qr_enabled,
       publish,
     });
 
@@ -443,6 +446,21 @@ export function EditEventForm({ event }: EditEventFormProps) {
                 id="social_sharing_enabled"
                 checked={formData.social_sharing_enabled}
                 onCheckedChange={(checked) => updateField('social_sharing_enabled', checked)}
+              />
+            </div>
+
+            {/* QR Code Tickets */}
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="ticket_qr_enabled">QR code tickets</Label>
+                <p className="text-muted-foreground text-sm">
+                  Show a scannable QR code on tickets instead of a text code
+                </p>
+              </div>
+              <Switch
+                id="ticket_qr_enabled"
+                checked={formData.ticket_qr_enabled}
+                onCheckedChange={(checked) => updateField('ticket_qr_enabled', checked)}
               />
             </div>
 

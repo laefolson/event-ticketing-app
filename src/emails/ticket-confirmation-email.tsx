@@ -1,4 +1,4 @@
-import { Section, Text } from '@react-email/components';
+import { Img, Section, Text } from '@react-email/components';
 import * as React from 'react';
 import { BaseLayout } from './base-layout';
 
@@ -6,6 +6,7 @@ interface TicketLine {
   tierName: string;
   quantity: number;
   ticketCode: string;
+  qrDataUrl?: string;
 }
 
 interface TicketConfirmationEmailProps {
@@ -16,6 +17,7 @@ interface TicketConfirmationEmailProps {
   tickets: TicketLine[];
   amountPaidFormatted: string;
   venueName: string;
+  ticketQrEnabled?: boolean;
 }
 
 export function TicketConfirmationEmail({
@@ -26,6 +28,7 @@ export function TicketConfirmationEmail({
   tickets,
   amountPaidFormatted,
   venueName,
+  ticketQrEnabled,
 }: TicketConfirmationEmailProps) {
   return (
     <BaseLayout preview={`Your tickets for ${eventTitle} are confirmed`} venueName={venueName}>
@@ -53,9 +56,24 @@ export function TicketConfirmationEmail({
               {ticket.tierName} &times; {ticket.quantity}
             </Text>
             <Text style={detailLabel}>Ticket Code</Text>
-            <Text style={i === tickets.length - 1 ? codeValueLast : codeValue}>
-              {ticket.ticketCode}
-            </Text>
+            {ticketQrEnabled && ticket.qrDataUrl ? (
+              <>
+                <Img
+                  src={ticket.qrDataUrl}
+                  alt={`QR code for ${ticket.ticketCode}`}
+                  width="120"
+                  height="120"
+                  style={{ margin: '4px 0 4px' }}
+                />
+                <Text style={i === tickets.length - 1 ? qrCodeTextLast : qrCodeTextStyle}>
+                  {ticket.ticketCode}
+                </Text>
+              </>
+            ) : (
+              <Text style={i === tickets.length - 1 ? codeValueLast : codeValue}>
+                {ticket.ticketCode}
+              </Text>
+            )}
             {i < tickets.length - 1 && <Text style={detailLabel}>---</Text>}
           </React.Fragment>
         ))}
@@ -122,6 +140,22 @@ const codeValueLast: React.CSSProperties = {
   fontFamily: 'monospace',
   fontSize: '18px',
   fontWeight: '700',
+  letterSpacing: '0.05em',
+  margin: '0',
+};
+
+const qrCodeTextStyle: React.CSSProperties = {
+  color: '#78716c',
+  fontFamily: 'monospace',
+  fontSize: '13px',
+  letterSpacing: '0.05em',
+  margin: '0 0 12px',
+};
+
+const qrCodeTextLast: React.CSSProperties = {
+  color: '#78716c',
+  fontFamily: 'monospace',
+  fontSize: '13px',
   letterSpacing: '0.05em',
   margin: '0',
 };

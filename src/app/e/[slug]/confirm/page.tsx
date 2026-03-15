@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { getEventBySlug, getTicketById, getTicketsBySessionId } from '../queries';
+import { generateQrDataUrl } from '@/lib/qr';
 import { TicketCard } from './ticket-card';
 
 interface ConfirmPageProps {
@@ -54,6 +55,16 @@ export default async function ConfirmPage({
   const firstTicket = tickets[0];
   const dateFormatted = format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
 
+  // Generate QR data URLs if enabled
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';
+  const qrMap = new Map<string, string>();
+  if (event.ticket_qr_enabled) {
+    for (const ticket of tickets) {
+      const verifyUrl = `${baseUrl}/e/${slug}/verify/${ticket.ticket_code}`;
+      qrMap.set(ticket.id, await generateQrDataUrl(verifyUrl));
+    }
+  }
+
   return (
     <div className="mx-auto max-w-lg px-6 py-10 sm:px-8">
       <Link
@@ -98,17 +109,35 @@ export default async function ConfirmPage({
 
             {tickets.map((ticket) => (
               <div key={ticket.id} className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Hash className="text-muted-foreground h-4 w-4" />
-                  <div>
-                    <span className="text-muted-foreground text-xs uppercase tracking-wide">
-                      Ticket Code
-                    </span>
-                    <p className="font-mono text-sm font-medium">
-                      {ticket.ticket_code}
-                    </p>
+                {event.ticket_qr_enabled && qrMap.has(ticket.id) ? (
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={qrMap.get(ticket.id)!}
+                      alt={`QR code for ${ticket.ticket_code}`}
+                      className="h-16 w-16"
+                    />
+                    <div>
+                      <span className="text-muted-foreground text-xs uppercase tracking-wide">
+                        Ticket Code
+                      </span>
+                      <p className="font-mono text-sm font-medium">
+                        {ticket.ticket_code}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Hash className="text-muted-foreground h-4 w-4" />
+                    <div>
+                      <span className="text-muted-foreground text-xs uppercase tracking-wide">
+                        Ticket Code
+                      </span>
+                      <p className="font-mono text-sm font-medium">
+                        {ticket.ticket_code}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-2">
                   <Users className="text-muted-foreground h-4 w-4" />
@@ -153,6 +182,8 @@ export default async function ConfirmPage({
           quantity={ticket.quantity}
           ticketCode={ticket.ticket_code}
           coverImageUrl={event.cover_image_url}
+          ticketQrEnabled={event.ticket_qr_enabled}
+          qrDataUrl={qrMap.get(ticket.id)}
         />
       ))}
     </div>

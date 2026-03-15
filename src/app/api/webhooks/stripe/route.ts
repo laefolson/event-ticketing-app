@@ -6,6 +6,7 @@ import { sendEmail } from '@/lib/resend';
 import { TicketConfirmationEmail } from '@/emails/ticket-confirmation-email';
 import { createServiceClient } from '@/lib/supabase/service';
 import { getVenueName } from '@/lib/settings';
+import { generateQrDataUrl } from '@/lib/qr';
 
 function formatCents(cents: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
 
         const { data: eventData } = await supabase
           .from('events')
-          .select('title, date_start, location_name')
+          .select('title, slug, date_start, location_name, ticket_qr_enabled')
           .eq('id', firstTicket.event_id)
           .single();
 
@@ -121,11 +122,24 @@ export async function POST(request: NextRequest) {
           const dateFormatted = format(new Date(eventData.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
           const amountTotal = session.amount_total ?? 0;
 
-          const ticketLines = pendingTickets.map((t) => ({
-            tierName: tierNameMap.get(t.tier_id) ?? 'Ticket',
-            quantity: t.quantity,
-            ticketCode: t.ticket_code,
-          }));
+          const ticketQrEnabled = !!(eventData.ticket_qr_enabled);
+          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';
+
+          const ticketLines = await Promise.all(
+            pendingTickets.map(async (t) => {
+              const line: { tierName: string; quantity: number; ticketCode: string; qrDataUrl?: string } = {
+                tierName: tierNameMap.get(t.tier_id) ?? 'Ticket',
+                quantity: t.quantity,
+                ticketCode: t.ticket_code,
+              };
+              if (ticketQrEnabled) {
+                line.qrDataUrl = await generateQrDataUrl(
+                  `${baseUrl}/e/${eventData.slug}/verify/${t.ticket_code}`
+                );
+              }
+              return line;
+            })
+          );
 
           sendEmail({
             to: firstTicket.attendee_email,
@@ -138,6 +152,7 @@ export async function POST(request: NextRequest) {
               tickets: ticketLines,
               amountPaidFormatted: formatCents(amountTotal),
               venueName,
+              ticketQrEnabled,
             }),
           }).catch((err) => {
             console.error('Failed to send ticket confirmation email:', err);

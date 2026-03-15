@@ -31,7 +31,10 @@ const createEventSchema = z
     host_bio_headline: z.string().max(200).nullable(),
     cover_image_url: z.string().url().nullable().optional(),
     gallery_urls: z.array(z.string().url()).optional(),
+    save_the_date_image_url: z.string().url().nullable().optional(),
+    save_the_date_text: z.string().max(2000).nullable().optional(),
     faq: z.array(faqPairSchema).optional(),
+    ticket_qr_enabled: z.boolean().optional().default(false),
     publish: z.boolean(),
   })
   .superRefine((data, ctx) => {
@@ -59,7 +62,10 @@ export type CreateEventInput = {
   host_bio_headline: string | null;
   cover_image_url?: string | null;
   gallery_urls?: string[];
+  save_the_date_image_url?: string | null;
+  save_the_date_text?: string | null;
   faq?: Array<{ question: string; answer: string }>;
+  ticket_qr_enabled?: boolean;
   publish: boolean;
 };
 

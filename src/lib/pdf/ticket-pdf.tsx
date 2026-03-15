@@ -16,6 +16,8 @@ interface TicketPdfProps {
   quantity: number;
   ticketCode: string;
   coverImageUrl: string | null;
+  ticketQrEnabled: boolean;
+  qrDataUrl?: string;
 }
 
 const colors = {
@@ -104,6 +106,21 @@ const styles = StyleSheet.create({
     color: colors.text,
     letterSpacing: 2,
   },
+  qrRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+  },
+  qrImage: {
+    width: 80,
+    height: 80,
+  },
+  qrCodeText: {
+    fontSize: 9,
+    fontFamily: 'Courier',
+    color: colors.label,
+    letterSpacing: 1,
+  },
 });
 
 export function TicketPdf({
@@ -115,6 +132,8 @@ export function TicketPdf({
   quantity,
   ticketCode,
   coverImageUrl,
+  ticketQrEnabled,
+  qrDataUrl,
 }: TicketPdfProps) {
   return (
     <Document>
@@ -155,8 +174,20 @@ export function TicketPdf({
 
           <View style={styles.divider} />
 
-          <Text style={styles.codeLabel}>Ticket Code</Text>
-          <Text style={styles.codeValue}>{ticketCode}</Text>
+          {ticketQrEnabled && qrDataUrl ? (
+            <View style={styles.qrRow}>
+              <View>
+                <Text style={styles.codeLabel}>Ticket Code</Text>
+                <Text style={styles.qrCodeText}>{ticketCode}</Text>
+              </View>
+              <Image src={qrDataUrl} style={styles.qrImage} />
+            </View>
+          ) : (
+            <>
+              <Text style={styles.codeLabel}>Ticket Code</Text>
+              <Text style={styles.codeValue}>{ticketCode}</Text>
+            </>
+          )}
         </View>
       </Page>
     </Document>

@@ -3,6 +3,7 @@ import { renderToBuffer } from '@react-pdf/renderer';
 import { format } from 'date-fns';
 import { createServiceClient } from '@/lib/supabase/service';
 import { TicketPdf } from '@/lib/pdf/ticket-pdf';
+import { generateQrDataUrl } from '@/lib/qr';
 
 export async function GET(
   _request: Request,
@@ -44,6 +45,14 @@ export async function GET(
     'EEEE, MMMM d, yyyy · h:mm a'
   );
 
+  const ticketQrEnabled = !!(event.ticket_qr_enabled);
+  let qrDataUrl: string | undefined;
+  if (ticketQrEnabled) {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';
+    const verifyUrl = `${baseUrl}/e/${event.slug}/verify/${ticket.ticket_code}`;
+    qrDataUrl = await generateQrDataUrl(verifyUrl);
+  }
+
   const pdfBuffer = await renderToBuffer(
     TicketPdf({
       eventTitle: event.title as string,
@@ -54,6 +63,8 @@ export async function GET(
       quantity: ticket.quantity as number,
       ticketCode: ticket.ticket_code as string,
       coverImageUrl: event.cover_image_url as string | null,
+      ticketQrEnabled,
+      qrDataUrl,
     })
   );
 

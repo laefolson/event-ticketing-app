@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { ImageUpload } from '@/components/image-upload';
 import {
   Dialog,
@@ -68,6 +69,9 @@ interface FormData {
   host_bio_headline: string;
   cover_image_url: string | null;
   gallery_urls: string[];
+  save_the_date_image_url: string | null;
+  save_the_date_text: string;
+  ticket_qr_enabled: boolean;
   tiers: TierFormData[];
   faq: FaqPair[];
 }
@@ -84,9 +88,10 @@ const EVENT_TYPE_OPTIONS: { value: EventType; label: string }[] = [
 const STEPS = [
   { number: 1, label: 'Basics' },
   { number: 2, label: 'Details' },
-  { number: 3, label: 'Tiers' },
-  { number: 4, label: 'FAQ' },
-  { number: 5, label: 'Review' },
+  { number: 3, label: 'Save the Date' },
+  { number: 4, label: 'Tiers' },
+  { number: 5, label: 'FAQ' },
+  { number: 6, label: 'Review' },
 ];
 
 const MAX_GALLERY_IMAGES = 6;
@@ -136,6 +141,9 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
     host_bio_headline: 'About the Host',
     cover_image_url: null,
     gallery_urls: [],
+    save_the_date_image_url: null,
+    save_the_date_text: '',
+    ticket_qr_enabled: false,
     tiers: [],
     faq: [],
   });
@@ -219,9 +227,9 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
   function handleNext() {
     setError(null);
     if (step === 1 && !validateStep1()) return;
-    if (step === 3 && !validateStep3()) return;
-    if (step === 4 && !validateStep4()) return;
-    setStep((s) => Math.min(s + 1, 5));
+    if (step === 4 && !validateStep3()) return;
+    if (step === 5 && !validateStep4()) return;
+    setStep((s) => Math.min(s + 1, 6));
   }
 
   function handleBack() {
@@ -375,9 +383,12 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
         : null,
       cover_image_url: formData.cover_image_url,
       gallery_urls: formData.gallery_urls.length > 0 ? formData.gallery_urls : undefined,
+      save_the_date_image_url: formData.save_the_date_image_url || null,
+      save_the_date_text: formData.save_the_date_text.trim() || null,
       faq: formData.faq.length > 0
         ? formData.faq.map((p) => ({ question: p.question.trim(), answer: p.answer.trim() }))
         : undefined,
+      ticket_qr_enabled: formData.ticket_qr_enabled,
       publish,
     });
 
@@ -416,9 +427,10 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
   const stepTitles: Record<number, { title: string; desc: string }> = {
     1: { title: 'Basics', desc: 'Event name, type, dates, and capacity.' },
     2: { title: 'Details', desc: 'Description, location, images, and host info.' },
-    3: { title: 'Ticket Tiers', desc: 'Set up your ticket options and pricing.' },
-    4: { title: 'FAQ', desc: 'Add frequently asked questions (optional).' },
-    5: { title: 'Review & Publish', desc: 'Review everything before saving.' },
+    3: { title: 'Save the Date', desc: 'Upload an image and add text for save-the-date messages (optional).' },
+    4: { title: 'Ticket Tiers', desc: 'Set up your ticket options and pricing.' },
+    5: { title: 'FAQ', desc: 'Add frequently asked questions (optional).' },
+    6: { title: 'Review & Publish', desc: 'Review everything before saving.' },
   };
 
   return (
@@ -671,6 +683,21 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                 </div>
               </div>
 
+              {/* QR Code Tickets */}
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="ticket_qr_enabled">QR code tickets</Label>
+                  <p className="text-muted-foreground text-sm">
+                    Show a scannable QR code on tickets instead of a text code
+                  </p>
+                </div>
+                <Switch
+                  id="ticket_qr_enabled"
+                  checked={formData.ticket_qr_enabled}
+                  onCheckedChange={(checked) => updateField('ticket_qr_enabled', checked)}
+                />
+              </div>
+
               {error && <p className="text-sm text-destructive">{error}</p>}
 
               <div className="flex items-center justify-between pt-2">
@@ -680,8 +707,47 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
             </div>
           )}
 
-          {/* Step 3: Tiers */}
+          {/* Step 3: Save the Date */}
           {step === 3 && (
+            <div className="space-y-4">
+              <p className="text-muted-foreground text-sm">
+                This step is optional. Upload an image and add text to include in save-the-date messages sent to contacts.
+              </p>
+
+              <div className="space-y-2">
+                <Label>Save the Date Image</Label>
+                <ImageUpload
+                  eventId={tempEventId}
+                  type="cover"
+                  currentUrl={formData.save_the_date_image_url}
+                  onUpload={(url) => updateField('save_the_date_image_url', url)}
+                  onRemove={() => updateField('save_the_date_image_url', null)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="save_the_date_text">Additional Text</Label>
+                <Textarea
+                  id="save_the_date_text"
+                  placeholder="Add any extra details for the save-the-date message..."
+                  rows={4}
+                  value={formData.save_the_date_text}
+                  onChange={(e) => updateField('save_the_date_text', e.target.value)}
+                  maxLength={2000}
+                />
+              </div>
+
+              {error && <p className="text-sm text-destructive">{error}</p>}
+
+              <div className="flex items-center justify-between pt-2">
+                <Button variant="ghost" onClick={handleBack}>Back</Button>
+                <Button onClick={handleNext}>Next</Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Tiers */}
+          {step === 4 && (
             <div className="space-y-4">
               {formData.tiers.length === 0 && editingTierIdx === null && (
                 <p className="text-muted-foreground text-sm text-center py-4">
@@ -825,8 +891,8 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
             </div>
           )}
 
-          {/* Step 4: FAQ */}
-          {step === 4 && (
+          {/* Step 5: FAQ */}
+          {step === 5 && (
             <div className="space-y-4">
               {formData.faq.length === 0 && (
                 <p className="text-muted-foreground text-sm text-center py-4">
@@ -901,8 +967,8 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
             </div>
           )}
 
-          {/* Step 5: Review & Publish */}
-          {step === 5 && (
+          {/* Step 6: Review & Publish */}
+          {step === 6 && (
             <div className="space-y-6">
               {/* Basics summary */}
               <div className="space-y-2">
@@ -918,6 +984,8 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                   <span>{formData.time_start && formData.time_end ? `${formatTime12(formData.time_start)} – ${formatTime12(formData.time_end)}` : '—'}</span>
                   <span className="text-muted-foreground">Capacity</span>
                   <span>{formData.capacity || 'Unlimited'}</span>
+                  <span className="text-muted-foreground">QR Tickets</span>
+                  <span>{formData.ticket_qr_enabled ? 'Enabled' : 'Disabled'}</span>
                 </div>
               </div>
 
@@ -959,6 +1027,27 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                   )}
                 </div>
               </div>
+
+              {/* Save the Date summary */}
+              {(formData.save_the_date_image_url || formData.save_the_date_text) && (
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold uppercase text-muted-foreground tracking-wide">Save the Date</h3>
+                  <div className="text-sm space-y-1">
+                    {formData.save_the_date_image_url && (
+                      <div className="relative h-32 w-48 overflow-hidden rounded-md border">
+                        <Image src={formData.save_the_date_image_url} alt="Save the Date" fill className="object-cover" />
+                      </div>
+                    )}
+                    {formData.save_the_date_text && (
+                      <p className="text-muted-foreground">
+                        {formData.save_the_date_text.length > 150
+                          ? formData.save_the_date_text.slice(0, 150) + '...'
+                          : formData.save_the_date_text}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Tiers summary */}
               <div className="space-y-2">

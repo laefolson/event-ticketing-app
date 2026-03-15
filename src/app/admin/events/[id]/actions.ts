@@ -29,6 +29,7 @@ const updateEventSchema = z
     save_the_date_image_url: z.string().url().nullable().optional(),
     save_the_date_text: z.string().max(2000).nullable().optional(),
     social_sharing_enabled: z.boolean(),
+    ticket_qr_enabled: z.boolean(),
     publish: z.boolean(),
   })
   .superRefine((data, ctx) => {
@@ -59,6 +60,7 @@ export type UpdateEventInput = {
   save_the_date_image_url?: string | null;
   save_the_date_text?: string | null;
   social_sharing_enabled: boolean;
+  ticket_qr_enabled: boolean;
   publish: boolean;
 };
 
