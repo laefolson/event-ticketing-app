@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
+import { formatDate } from '@/lib/utils';
 import {
   Clock,
   Mail,
@@ -169,7 +170,7 @@ export function PostEventManager({
             </h3>
             <p className="text-muted-foreground">
               Ends on{' '}
-              {format(new Date(event.date_end), 'EEEE, MMMM d, yyyy \'at\' h:mm a')}
+              {formatDate(event.date_end, "EEEE, MMMM d, yyyy 'at' h:mm a")}
             </p>
             <p className="text-muted-foreground text-sm mt-1">
               ({formatDistanceToNow(new Date(event.date_end), { addSuffix: true })})
@@ -280,7 +281,7 @@ export function PostEventManager({
               <p className="text-sm text-muted-foreground">
                 Archived on{' '}
                 {event.archived_at
-                  ? format(new Date(event.archived_at), 'MMMM d, yyyy')
+                  ? formatDate(event.archived_at, 'MMMM d, yyyy')
                   : 'an unknown date'}
               </p>
               <Button

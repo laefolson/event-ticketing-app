@@ -2,8 +2,8 @@ export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
 import { CalendarDays, DollarSign, Ticket, TrendingUp, MapPin, ArrowRight, Plus } from 'lucide-react';
-import { format } from 'date-fns';
 import { createClient } from '@/lib/supabase/server';
+import { formatDate } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { EventStatus } from '@/types/database';
@@ -136,7 +136,7 @@ export default async function AdminDashboard() {
                 <div className="flex flex-col gap-1 min-w-0">
                   <span className="font-medium truncate">{event.title}</span>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <span>{format(new Date(event.date_start), 'MMM d, yyyy')}</span>
+                    <span>{formatDate(event.date_start, 'MMM d, yyyy')}</span>
                     {event.location_name && (
                       <span className="flex items-center gap-1">
                         <MapPin className="h-3 w-3" />

@@ -18,6 +18,7 @@ interface TicketConfirmationEmailProps {
   amountPaidFormatted: string;
   venueName: string;
   ticketQrEnabled?: boolean;
+  coverImageUrl?: string | null;
 }
 
 export function TicketConfirmationEmail({
@@ -29,9 +30,18 @@ export function TicketConfirmationEmail({
   amountPaidFormatted,
   venueName,
   ticketQrEnabled,
+  coverImageUrl,
 }: TicketConfirmationEmailProps) {
   return (
     <BaseLayout preview={`Your tickets for ${eventTitle} are confirmed`} venueName={venueName}>
+      {coverImageUrl && (
+        <Img
+          src={coverImageUrl}
+          alt={eventTitle}
+          width="100%"
+          style={heroImage}
+        />
+      )}
       <Text style={heading}>Payment Confirmed!</Text>
       <Text style={paragraph}>Hi {attendeeName},</Text>
       <Text style={paragraph}>
@@ -86,6 +96,12 @@ export function TicketConfirmationEmail({
     </BaseLayout>
   );
 }
+
+const heroImage: React.CSSProperties = {
+  width: '100%',
+  borderRadius: '4px',
+  marginBottom: '24px',
+};
 
 const heading: React.CSSProperties = {
   color: '#1c1917',

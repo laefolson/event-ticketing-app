@@ -2,8 +2,8 @@ export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
 import { Archive, MapPin, ArrowRight } from 'lucide-react';
-import { format } from 'date-fns';
 import { createClient } from '@/lib/supabase/server';
+import { formatDate } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 
 export default async function ArchivePage() {
@@ -32,7 +32,7 @@ export default async function ArchivePage() {
                   <span className="font-medium truncate">{event.title}</span>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <span>
-                      {format(new Date(event.date_start), 'MMM d, yyyy')}
+                      {formatDate(event.date_start, 'MMM d, yyyy')}
                     </span>
                     {event.location_name && (
                       <span className="flex items-center gap-1">
@@ -46,7 +46,7 @@ export default async function ArchivePage() {
                   {event.archived_at && (
                     <span className="text-sm text-muted-foreground">
                       Archived{' '}
-                      {format(new Date(event.archived_at), 'MMM d, yyyy')}
+                      {formatDate(event.archived_at, 'MMM d, yyyy')}
                     </span>
                   )}
                   <ArrowRight className="h-4 w-4 text-muted-foreground" />

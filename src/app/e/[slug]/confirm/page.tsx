@@ -3,8 +3,8 @@ export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, CheckCircle2, Calendar, MapPin, Hash, Users } from 'lucide-react';
-import { format } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
+import { formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { getEventBySlug, getTicketById, getTicketsBySessionId } from '../queries';
 import { generateQrDataUrl } from '@/lib/qr';
@@ -53,7 +53,7 @@ export default async function ConfirmPage({
   }
 
   const firstTicket = tickets[0];
-  const dateFormatted = format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
+  const dateFormatted = formatDate(event.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
 
   // Generate QR data URLs if enabled
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';

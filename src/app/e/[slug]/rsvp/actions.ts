@@ -1,13 +1,12 @@
 'use server';
 
 import { z } from 'zod';
-import { format } from 'date-fns';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { sendEmail } from '@/lib/resend';
 import { RsvpConfirmationEmail } from '@/emails/rsvp-confirmation-email';
 import { getVenueName } from '@/lib/settings';
-import { generateTicketCode } from '@/lib/utils';
+import { generateTicketCode, formatDate } from '@/lib/utils';
 import type { ActionResponse } from '@/types/actions';
 
 const rsvpSchema = z.object({
@@ -155,7 +154,7 @@ export async function submitRsvp(
   // Send confirmation email (best-effort)
   if (attendee_email) {
     const venueName = await getVenueName();
-    const dateFormatted = format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
+    const dateFormatted = formatDate(event.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
     sendEmail({
       to: attendee_email,
       subject: `RSVP Confirmed: ${event.title}`,

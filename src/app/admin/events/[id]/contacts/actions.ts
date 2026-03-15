@@ -1,8 +1,8 @@
 'use server';
 
 import { z } from 'zod';
-import { format } from 'date-fns';
 import { createClient } from '@/lib/supabase/server';
+import { formatDate } from '@/lib/utils';
 import { sendEmail } from '@/lib/resend';
 import { sendSms } from '@/lib/twilio';
 import { InvitationEmail } from '@/emails/invitation-email';
@@ -548,9 +548,9 @@ export async function sendInvitations(
   const venueName = await getVenueName();
   const origin = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000';
   const eventUrl = `${origin}/e/${event.slug}`;
-  const dateFormatted = format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
+  const dateFormatted = formatDate(event.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
   const emailSubject = `You're invited to ${event.title}`;
-  const smsBody = `You're invited to ${event.title} on ${format(new Date(event.date_start), 'MMM d, yyyy')}! View details & RSVP: ${eventUrl}`;
+  const smsBody = `You're invited to ${event.title} on ${formatDate(event.date_start, 'MMM d, yyyy')}! View details & RSVP: ${eventUrl}`;
 
   let sent = 0;
   let failed = 0;
@@ -706,7 +706,7 @@ export async function sendSaveTheDates(
 
   const venueName = await getVenueName();
   const emailSubject = `Save the Date: ${event.title}`;
-  const dateFormatted = format(new Date(event.date_start), 'MMM d, yyyy');
+  const dateFormatted = formatDate(event.date_start, 'MMM d, yyyy');
   const smsBody = `Save the date! ${event.title} on ${dateFormatted}. More details coming soon.`;
 
   let sent = 0;

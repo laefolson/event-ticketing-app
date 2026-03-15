@@ -2,11 +2,10 @@ export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
 import { CalendarDays, MapPin, ArrowRight, Plus } from 'lucide-react';
-import { format } from 'date-fns';
 import { createClient } from '@/lib/supabase/server';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import type { EventStatus } from '@/types/database';
 
 const VALID_STATUSES: EventStatus[] = ['draft', 'published', 'archived'];
@@ -98,7 +97,7 @@ export default async function EventsPage({
                 <div className="flex flex-col gap-1 min-w-0">
                   <span className="font-medium truncate">{event.title}</span>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <span>{format(new Date(event.date_start), 'MMM d, yyyy')}</span>
+                    <span>{formatDate(event.date_start, 'MMM d, yyyy')}</span>
                     {event.location_name && (
                       <span className="flex items-center gap-1">
                         <MapPin className="h-3 w-3" />

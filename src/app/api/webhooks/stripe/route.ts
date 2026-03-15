@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { format } from 'date-fns';
 import { stripe } from '@/lib/stripe';
+import { formatDate } from '@/lib/utils';
 import { sendEmail } from '@/lib/resend';
 import { TicketConfirmationEmail } from '@/emails/ticket-confirmation-email';
 import { createServiceClient } from '@/lib/supabase/service';
@@ -113,13 +113,13 @@ export async function POST(request: NextRequest) {
 
         const { data: eventData } = await supabase
           .from('events')
-          .select('title, slug, date_start, location_name, ticket_qr_enabled')
+          .select('title, slug, date_start, location_name, ticket_qr_enabled, cover_image_url')
           .eq('id', firstTicket.event_id)
           .single();
 
         if (eventData) {
           const venueName = await getVenueName();
-          const dateFormatted = format(new Date(eventData.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
+          const dateFormatted = formatDate(eventData.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
           const amountTotal = session.amount_total ?? 0;
 
           const ticketQrEnabled = !!(eventData.ticket_qr_enabled);
@@ -153,6 +153,7 @@ export async function POST(request: NextRequest) {
               amountPaidFormatted: formatCents(amountTotal),
               venueName,
               ticketQrEnabled,
+              coverImageUrl: eventData.cover_image_url,
             }),
           });
 

@@ -3,8 +3,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import Markdown from 'react-markdown';
 import { CalendarDays, MapPin } from 'lucide-react';
-import { format, isSameDay } from 'date-fns';
 import { Button } from '@/components/ui/button';
+import { formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -32,14 +32,14 @@ function formatCents(cents: number): string {
 }
 
 function formatDateRange(start: string, end: string): string {
-  const s = new Date(start);
-  const e = new Date(end);
+  const sDay = formatDate(start, 'yyyy-MM-dd');
+  const eDay = formatDate(end, 'yyyy-MM-dd');
 
-  if (isSameDay(s, e)) {
-    return `${format(s, 'EEEE, MMMM d, yyyy')} · ${format(s, 'h:mm a')} – ${format(e, 'h:mm a')}`;
+  if (sDay === eDay) {
+    return `${formatDate(start, 'EEEE, MMMM d, yyyy')} · ${formatDate(start, 'h:mm a')} – ${formatDate(end, 'h:mm a')}`;
   }
 
-  return `${format(s, 'MMM d, yyyy h:mm a')} – ${format(e, 'MMM d, yyyy h:mm a')}`;
+  return `${formatDate(start, 'MMM d, yyyy h:mm a')} – ${formatDate(end, 'MMM d, yyyy h:mm a')}`;
 }
 
 function getPriceRange(tiers: TicketTier[]): string {

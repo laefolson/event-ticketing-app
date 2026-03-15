@@ -14,8 +14,8 @@ import {
   MessageSquare,
   MapPin,
 } from 'lucide-react';
-import { format } from 'date-fns';
 import { createClient } from '@/lib/supabase/server';
+import { formatDate } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -217,14 +217,14 @@ export default async function ArchiveDetailPage({
             {event.archived_at && (
               <p className="text-sm text-muted-foreground mb-1">
                 Archived on{' '}
-                {format(new Date(event.archived_at), 'MMM d, yyyy')}
+                {formatDate(event.archived_at, 'MMM d, yyyy')}
               </p>
             )}
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <span>
-                {format(new Date(event.date_start), 'MMM d, yyyy h:mm a')}
+                {formatDate(event.date_start, 'MMM d, yyyy h:mm a')}
                 {' — '}
-                {format(new Date(event.date_end), 'MMM d, yyyy h:mm a')}
+                {formatDate(event.date_end, 'MMM d, yyyy h:mm a')}
               </span>
               {event.location_name && (
                 <span className="flex items-center gap-1">
@@ -446,10 +446,7 @@ export default async function ArchiveDetailPage({
                     </span>
                   </div>
                   <span className="text-muted-foreground shrink-0 text-xs">
-                    {format(
-                      new Date(imp.imported_at),
-                      'MMM d, yyyy h:mm a'
-                    )}
+                    {formatDate(imp.imported_at, 'MMM d, yyyy h:mm a')}
                   </span>
                 </div>
               ))}

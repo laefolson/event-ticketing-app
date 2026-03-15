@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { CheckCircle2, Clock, XCircle, Calendar, MapPin, Ticket, Users } from 'lucide-react';
-import { format } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
+import { formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { createServiceClient } from '@/lib/supabase/service';
 
@@ -47,7 +47,7 @@ export default async function VerifyPage({ params }: VerifyPageProps) {
   const status = ticket.status as string;
   const config = statusConfig[status] ?? statusConfig.pending;
   const StatusIcon = config.icon;
-  const dateFormatted = format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
+  const dateFormatted = formatDate(event.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
 
   return (
     <div className="mx-auto max-w-md px-6 py-10 sm:px-8">

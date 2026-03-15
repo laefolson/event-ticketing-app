@@ -56,7 +56,7 @@ import {
 } from './actions';
 import type { ContactInput, CsvRow, ImportResult, InvitationScope, InvitationResult, SaveTheDateScope, SaveTheDateResult } from './actions';
 import type { Contact, CsvImport, InvitationChannel } from '@/types/database';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/utils';
 
 interface ContactsManagerProps {
   contacts: Contact[];
@@ -647,7 +647,7 @@ export function ContactsManager({
                       <TableCell>
                         {contact.invited_at ? (
                           <span className="text-muted-foreground text-xs">
-                            {format(new Date(contact.invited_at), 'MMM d, h:mm a')}
+                            {formatDate(contact.invited_at, 'MMM d, h:mm a')}
                           </span>
                         ) : (
                           <span className="text-muted-foreground text-xs">—</span>
@@ -702,7 +702,7 @@ export function ContactsManager({
                   </span>
                 </div>
                 <span className="text-muted-foreground shrink-0 text-xs">
-                  {format(new Date(imp.imported_at), 'MMM d, yyyy h:mm a')}
+                  {formatDate(imp.imported_at, 'MMM d, yyyy h:mm a')}
                 </span>
               </div>
             ))}

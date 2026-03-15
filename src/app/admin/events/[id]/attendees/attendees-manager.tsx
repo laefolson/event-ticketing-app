@@ -3,8 +3,8 @@
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, QrCode, CheckCircle2, Undo2, Download, Check, Minus } from 'lucide-react';
-import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
+import { formatDate } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -161,7 +161,7 @@ export function AttendeesManager({
       String(t.quantity),
       formatCents(t.amount_paid_cents),
       t.status === 'checked_in' ? 'Checked In' : 'Confirmed',
-      format(new Date(t.purchased_at), 'yyyy-MM-dd'),
+      formatDate(t.purchased_at, 'yyyy-MM-dd'),
       hasConsent(t.attendee_phone, eventOptInPhones) ? 'Yes' : 'No',
       hasConsent(t.attendee_phone, marketingOptInPhones) ? 'Yes' : 'No',
     ]);
@@ -362,7 +362,7 @@ export function AttendeesManager({
                           {formatCents(ticket.amount_paid_cents)}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {format(new Date(ticket.purchased_at), 'MMM d')}
+                          {formatDate(ticket.purchased_at, 'MMM d')}
                         </TableCell>
                         <TableCell className="text-center">
                           {hasConsent(ticket.attendee_phone, eventOptInPhones) ? (

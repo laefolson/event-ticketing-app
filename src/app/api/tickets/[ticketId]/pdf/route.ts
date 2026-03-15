@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { renderToBuffer } from '@react-pdf/renderer';
-import { format } from 'date-fns';
 import sharp from 'sharp';
+import { formatDate } from '@/lib/utils';
 import { createServiceClient } from '@/lib/supabase/service';
 import { TicketPdf } from '@/lib/pdf/ticket-pdf';
 import { generateQrDataUrl } from '@/lib/qr';
@@ -41,8 +41,8 @@ export async function GET(
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
 
-  const dateFormatted = format(
-    new Date(event.date_start as string),
+  const dateFormatted = formatDate(
+    event.date_start as string,
     'EEEE, MMMM d, yyyy · h:mm a'
   );
 

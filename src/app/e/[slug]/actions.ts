@@ -1,8 +1,8 @@
 'use server';
 
 import { z } from 'zod';
-import { format } from 'date-fns';
 import { createServiceClient } from '@/lib/supabase/service';
+import { formatDate } from '@/lib/utils';
 import { sendEmail } from '@/lib/resend';
 import { TicketConfirmationEmail } from '@/emails/ticket-confirmation-email';
 import { getVenueName } from '@/lib/settings';
@@ -34,7 +34,7 @@ export async function resendTickets(
   // Look up event by slug
   const { data: event } = await supabase
     .from('events')
-    .select('id, title, slug, date_start, location_name, ticket_qr_enabled')
+    .select('id, title, slug, date_start, location_name, ticket_qr_enabled, cover_image_url')
     .eq('slug', slug)
     .eq('is_published', true)
     .eq('link_active', true)
@@ -87,7 +87,7 @@ export async function resendTickets(
 
   // Build email data
   const venueName = await getVenueName();
-  const dateFormatted = format(new Date(event.date_start), 'EEEE, MMMM d, yyyy · h:mm a');
+  const dateFormatted = formatDate(event.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
   const ticketQrEnabled = !!event.ticket_qr_enabled;
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';
 
@@ -123,6 +123,7 @@ export async function resendTickets(
       amountPaidFormatted: formatCents(amountTotal),
       venueName,
       ticketQrEnabled,
+      coverImageUrl: event.cover_image_url,
     }),
   });
 

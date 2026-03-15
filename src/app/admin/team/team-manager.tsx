@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { UserPlus, Pencil, Trash2 } from 'lucide-react';
-import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
+import { formatDate } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -246,7 +246,7 @@ export function TeamManager({ members, currentUserId }: TeamManagerProps) {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {format(new Date(member.invited_at), 'MMM d, yyyy')}
+                      {formatDate(member.invited_at, 'MMM d, yyyy')}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">

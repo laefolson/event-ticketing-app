@@ -13,6 +13,7 @@
 | 1.2 | Mar 2026 | Add customizable host bio section headline per event. |
 | 1.3 | Mar 2026 | Add save-the-date feature: per-event image/text, email + SMS sending, SaveTheDateEmail template, `save_the_date` message type, wizard updated to 6 steps. |
 | 1.4 | Mar 2026 | Add SMS opt-in columns (event updates + marketing) and CSV export to attendees tab. |
+| 1.5 | Mar 2026 | Fix all dates to display in Mountain Time (`America/Denver`) via shared `formatDate` helper. Add cover image hero to ticket confirmation email. |
 
 ---
 
@@ -420,7 +421,7 @@ Available at `/admin/events/[id]/post-event` once `date_end` has passed.
 
 **Thank-you messages:**
 - Send to all confirmed/attended ticket holders
-- Email: customizable body; defaults to "Thank you for joining us at [Event]...". Includes the event cover image as a hero at the top when available.
+- Email: customizable body; defaults to "Thank you for joining us at [Event]...". Includes the event cover image as a hero at the top when available (same pattern used in Ticket Confirmation email).
 - SMS: `"Thank you for attending [Event Title]! Hope to see you next time."`
 - Channel follows each contact's `invitation_channel` setting
 - Preview before sending; logged with `message_type = thank_you`
@@ -503,7 +504,7 @@ All email templates built in **Resend React Email** format. Must be responsive a
 | Invitation | Email | Admin sends invitation |
 | Invitation | SMS | Admin sends invitation |
 | RSVP Confirmation | Email | Guest completes free RSVP |
-| Ticket Confirmation | Email | Stripe `checkout.session.completed` |
+| Ticket Confirmation | Email | Stripe `checkout.session.completed`; includes cover image hero when available |
 | Thank-You | Email | Admin sends from post-event page |
 | Thank-You | SMS | Admin sends from post-event page |
 | Reminder | Email | _(Phase 2)_ 48hrs before event |
@@ -612,7 +613,7 @@ All email templates built in **Resend React Email** format. Must be responsive a
 - **Server Actions / Route Handlers** for all database mutations.
 - **Zod** for all server-side input validation.
 - **shadcn/ui** for all UI components (`npx shadcn@latest init`).
-- **Dates.** Store all dates in UTC. Display in local time with `date-fns-tz`.
+- **Dates.** Store all dates in UTC. Display in Mountain Time (`America/Denver`) using the shared `formatDate(date, pattern)` helper in `src/lib/utils.ts`, which wraps `formatInTimeZone` from `date-fns-tz`. All UI and email date formatting must use `formatDate` — never `format` from `date-fns` directly.
 - **Slugs.** Generate as `kebab-case-title` + `-` + 6 random alphanumeric chars.
 - **Ticket code.** Store as short code on creation. Display as plain text or QR code based on per-event `ticket_qr_enabled` toggle. QR encodes `/e/[slug]/verify/[ticket_code]` and is generated on-the-fly via the `qrcode` library.
 - **Ticket card.** Built as a styled React component; PDF download via `@react-pdf/renderer`. QR code appears on confirmation page, PDF, and email when enabled.
