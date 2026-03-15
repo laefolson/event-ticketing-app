@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
             })
           );
 
-          sendEmail({
+          const emailResult = await sendEmail({
             to: firstTicket.attendee_email,
             subject: `Tickets Confirmed: ${eventData.title}`,
             react: TicketConfirmationEmail({
@@ -154,9 +154,11 @@ export async function POST(request: NextRequest) {
               venueName,
               ticketQrEnabled,
             }),
-          }).catch((err) => {
-            console.error('Failed to send ticket confirmation email:', err);
           });
+
+          if (!emailResult.success) {
+            console.error('Failed to send ticket confirmation email:', emailResult.error);
+          }
         }
       }
 
