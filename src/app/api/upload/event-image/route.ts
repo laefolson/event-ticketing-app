@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import sharp from 'sharp';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
+
+const COVER_WIDTH = 1200;
+const COVER_HEIGHT = 400;
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
@@ -51,17 +55,41 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
+  const serviceClient = createServiceClient();
+  let buffer = Buffer.from(await file.arrayBuffer());
+  let contentType = file.type;
+  let ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
+
+  // Process cover images: resize/crop to 1200x400 WebP
+  if (type === 'cover') {
+    const metadata = await sharp(buffer).metadata();
+    const srcW = metadata.width ?? COVER_WIDTH;
+    const srcH = metadata.height ?? COVER_HEIGHT;
+
+    const scale = Math.max(COVER_WIDTH / srcW, COVER_HEIGHT / srcH);
+    const resizedW = Math.round(srcW * scale);
+    const resizedH = Math.round(srcH * scale);
+
+    const left = Math.round((resizedW - COVER_WIDTH) * 0.5);
+    const top = Math.round((resizedH - COVER_HEIGHT) * 0.2);
+
+    buffer = await sharp(buffer)
+      .resize(resizedW, resizedH)
+      .extract({ left, top, width: COVER_WIDTH, height: COVER_HEIGHT })
+      .webp({ quality: 85 })
+      .toBuffer() as Buffer<ArrayBuffer>;
+
+    ext = 'webp';
+    contentType = 'image/webp';
+  }
+
   const filename = `${type}-${Date.now()}.${ext}`;
   const storagePath = `${eventId}/${filename}`;
-
-  const serviceClient = createServiceClient();
-  const buffer = Buffer.from(await file.arrayBuffer());
 
   const { error: uploadError } = await serviceClient.storage
     .from(BUCKET)
     .upload(storagePath, buffer, {
-      contentType: file.type,
+      contentType,
       upsert: false,
     });
 

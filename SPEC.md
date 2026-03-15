@@ -306,6 +306,8 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
 
 **Step 2 — Details:** markdown description, location name + address, cover image, up to 6 gallery photos, host bio section headline (defaults to "About the Host"; customizable per event, e.g. "About the Band"), host bio (pre-fillable from settings default)
 
+> **Cover image processing:** Uploaded cover images are automatically resized/cropped to 1200×400 (3:1 aspect ratio) using Sharp. Crop position is horizontally centered, vertically at 20% from top. Output format is WebP at quality 85. Gallery images are uploaded as-is.
+
 **Step 3 — Save the Date:** optional save-the-date image upload (`save_the_date_image_url`) and custom text (`save_the_date_text`); used when sending save-the-date messages before invitations (see §6.10)
 
 **Step 4 — Ticket Tiers:**
