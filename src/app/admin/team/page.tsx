@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { createServiceClient } from '@/lib/supabase/service';
 import { TeamManager } from './team-manager';
 import type { TeamMember } from '@/types/database';
 
@@ -36,10 +36,10 @@ export default async function TeamPage() {
     .order('invited_at', { ascending: true });
 
   // Resolve real MFA status from Supabase Auth for all members
-  const adminClient = createAdminClient();
+  const serviceClient = createServiceClient();
   const membersWithMfa = await Promise.all(
     ((members ?? []) as TeamMember[]).map(async (member) => {
-      const { data } = await adminClient.auth.admin.mfa.listFactors({
+      const { data } = await serviceClient.auth.admin.mfa.listFactors({
         userId: member.user_id,
       });
       const hasVerifiedTotp = data?.factors?.some(

@@ -3,17 +3,10 @@ export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import { CalendarDays, DollarSign, Ticket, TrendingUp, MapPin, ArrowRight, Plus } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatCents } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { EventStatus } from '@/types/database';
-
-function formatCents(cents: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(cents / 100);
-}
 
 function statusVariant(status: EventStatus) {
   switch (status) {

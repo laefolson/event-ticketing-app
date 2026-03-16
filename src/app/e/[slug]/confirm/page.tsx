@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, CheckCircle2, Calendar, MapPin, Hash, Users } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatDate } from '@/lib/utils';
+import { formatDate, getBaseUrl } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { getEventBySlug, getTicketById, getTicketsBySessionId } from '../queries';
 import { generateQrDataUrl } from '@/lib/qr';
@@ -56,7 +56,7 @@ export default async function ConfirmPage({
   const dateFormatted = formatDate(event.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
 
   // Generate QR data URLs if enabled
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';
+  const baseUrl = getBaseUrl();
   const qrMap = new Map<string, string>();
   if (event.ticket_qr_enabled) {
     for (const ticket of tickets) {

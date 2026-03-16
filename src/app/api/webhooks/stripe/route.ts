@@ -1,19 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { stripe } from '@/lib/stripe';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatCents, getBaseUrl } from '@/lib/utils';
 import { sendEmail } from '@/lib/resend';
 import { TicketConfirmationEmail } from '@/emails/ticket-confirmation-email';
 import { createServiceClient } from '@/lib/supabase/service';
 import { getVenueName } from '@/lib/settings';
 import { generateQrDataUrl } from '@/lib/qr';
-
-function formatCents(cents: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(cents / 100);
-}
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -123,7 +116,7 @@ export async function POST(request: NextRequest) {
           const amountTotal = session.amount_total ?? 0;
 
           const ticketQrEnabled = !!(eventData.ticket_qr_enabled);
-          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';
+          const baseUrl = getBaseUrl();
 
           const ticketLines = await Promise.all(
             pendingTickets.map(async (t) => {

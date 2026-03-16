@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { createServiceClient } from '@/lib/supabase/service';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatCents, getBaseUrl } from '@/lib/utils';
 import { sendEmail } from '@/lib/resend';
 import { TicketConfirmationEmail } from '@/emails/ticket-confirmation-email';
 import { getVenueName } from '@/lib/settings';
@@ -10,13 +10,6 @@ import { generateQrDataUrl } from '@/lib/qr';
 import type { ActionResponse } from '@/types/actions';
 
 const emailSchema = z.string().email();
-
-function formatCents(cents: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(cents / 100);
-}
 
 export async function resendTickets(
   slug: string,
@@ -89,7 +82,7 @@ export async function resendTickets(
   const venueName = await getVenueName();
   const dateFormatted = formatDate(event.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
   const ticketQrEnabled = !!event.ticket_qr_enabled;
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';
+  const baseUrl = getBaseUrl();
 
   const amountTotal = tickets.reduce((sum, t) => sum + t.amount_paid_cents, 0);
 

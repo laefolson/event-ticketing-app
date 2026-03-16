@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { getEventBySlug, getTiersForEvent } from '../queries';
+import { getVenueName } from '@/lib/settings';
 import { CheckoutForm } from './checkout-form';
 
 interface CheckoutPageProps {
@@ -16,7 +17,10 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
 
   if (!event) notFound();
 
-  const tiers = await getTiersForEvent(event.id);
+  const [tiers, venueName] = await Promise.all([
+    getTiersForEvent(event.id),
+    getVenueName(),
+  ]);
 
   // Only events with at least one paid tier should reach the checkout page
   const hasPaidTiers = tiers.some((t) => t.price_cents > 0);
@@ -37,7 +41,7 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
         Select your tickets and complete checkout.
       </p>
 
-      <CheckoutForm eventId={event.id} slug={slug} tiers={tiers} />
+      <CheckoutForm eventId={event.id} slug={slug} tiers={tiers} venueName={venueName} />
     </div>
   );
 }

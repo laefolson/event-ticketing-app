@@ -15,7 +15,7 @@ import {
   MapPin,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatPrice } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -29,14 +29,6 @@ import {
 import { ExportCsvButton } from './export-csv-button';
 import { DeleteEventButton } from './delete-event-button';
 import type { TicketStatus } from '@/types/database';
-
-function formatCents(cents: number): string {
-  if (cents === 0) return 'Free';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(cents / 100);
-}
 
 function ticketStatusVariant(status: TicketStatus) {
   switch (status) {
@@ -170,7 +162,7 @@ export default async function ArchiveDetailPage({
     },
     {
       title: 'Revenue',
-      value: formatCents(totalRevenue),
+      value: formatPrice(totalRevenue),
       icon: DollarSign,
     },
     {
@@ -275,12 +267,12 @@ export default async function ArchiveDetailPage({
                   {tiersData.map((tier) => (
                     <TableRow key={tier.name}>
                       <TableCell className="font-medium">{tier.name}</TableCell>
-                      <TableCell>{formatCents(tier.price_cents)}</TableCell>
+                      <TableCell>{formatPrice(tier.price_cents)}</TableCell>
                       <TableCell className="text-center">
                         {tier.quantity_sold} / {tier.quantity_total}
                       </TableCell>
                       <TableCell className="text-right">
-                        {formatCents(tier.revenue)}
+                        {formatPrice(tier.revenue)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -327,7 +319,7 @@ export default async function ArchiveDetailPage({
                         {ticket.quantity}
                       </TableCell>
                       <TableCell>
-                        {formatCents(ticket.amount_paid_cents)}
+                        {formatPrice(ticket.amount_paid_cents)}
                       </TableCell>
                       <TableCell>
                         <Badge

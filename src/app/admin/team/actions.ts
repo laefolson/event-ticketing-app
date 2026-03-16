@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { createServiceClient } from '@/lib/supabase/service';
 import type { ActionResponse } from '@/types/actions';
 import type { TeamRole } from '@/types/database';
 
@@ -70,9 +70,9 @@ export async function inviteTeamMember(
   }
 
   // Create auth user + send invite email
-  let adminClient;
+  let serviceClient;
   try {
-    adminClient = createAdminClient();
+    serviceClient = createServiceClient();
   } catch {
     return { success: false, error: 'Server configuration error: admin client unavailable.' };
   }
@@ -80,7 +80,7 @@ export async function inviteTeamMember(
   const headersList = await headers();
   const origin = headersList.get('origin') ?? '';
   const { data: inviteData, error: inviteError } =
-    await adminClient.auth.admin.inviteUserByEmail(parsed.data.email, {
+    await serviceClient.auth.admin.inviteUserByEmail(parsed.data.email, {
       redirectTo: `${origin}/auth/setup`,
     });
 
@@ -89,7 +89,7 @@ export async function inviteTeamMember(
   }
 
   // Insert team_members record
-  const { data, error } = await adminClient
+  const { data, error } = await serviceClient
     .from('team_members')
     .insert({
       user_id: inviteData.user.id,
@@ -137,14 +137,14 @@ export async function updateTeamMemberRole(
     return { success: false, error: 'You cannot demote yourself.' };
   }
 
-  let adminClient;
+  let serviceClient;
   try {
-    adminClient = createAdminClient();
+    serviceClient = createServiceClient();
   } catch {
     return { success: false, error: 'Server configuration error: admin client unavailable.' };
   }
 
-  const { error } = await adminClient
+  const { error } = await serviceClient
     .from('team_members')
     .update({ role })
     .eq('id', memberId);
@@ -181,15 +181,15 @@ export async function removeTeamMember(
     return { success: false, error: 'You cannot remove yourself.' };
   }
 
-  let adminClient;
+  let serviceClient;
   try {
-    adminClient = createAdminClient();
+    serviceClient = createServiceClient();
   } catch {
     return { success: false, error: 'Server configuration error: admin client unavailable.' };
   }
 
   // Delete team_members record first
-  const { error: deleteError } = await adminClient
+  const { error: deleteError } = await serviceClient
     .from('team_members')
     .delete()
     .eq('id', memberId);
@@ -200,7 +200,7 @@ export async function removeTeamMember(
 
   // Delete auth user
   const { error: authDeleteError } =
-    await adminClient.auth.admin.deleteUser(target.user_id);
+    await serviceClient.auth.admin.deleteUser(target.user_id);
 
   if (authDeleteError) {
     return { success: false, error: authDeleteError.message };

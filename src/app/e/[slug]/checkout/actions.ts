@@ -9,7 +9,7 @@ import { stripe } from '@/lib/stripe';
 import { sendEmail } from '@/lib/resend';
 import { RsvpConfirmationEmail } from '@/emails/rsvp-confirmation-email';
 import { getVenueName } from '@/lib/settings';
-import { generateTicketCode, formatDate } from '@/lib/utils';
+import { generateTicketCode, formatDate, getBaseUrl } from '@/lib/utils';
 import type { ActionResponse } from '@/types/actions';
 
 const checkoutSchema = z.object({
@@ -178,7 +178,7 @@ export async function createCheckoutSession(
     return { success: false, error: 'Failed to create tickets. Please try again.' };
   }
 
-  const origin = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000';
+  const origin = getBaseUrl();
 
   let redirectUrl: string;
 
@@ -339,11 +339,12 @@ export async function createCheckoutSession(
     }
 
     if (consent_marketing) {
+      const vName = await getVenueName();
       consentRecords.push({
         phone: attendee_phone,
         consent_type: 'marketing',
         consent_text:
-          'I agree to receive text messages about future events from Blue Barn Events',
+          `I agree to receive text messages about future events from ${vName}`,
         ip_address: ipAddress,
         event_id,
       });

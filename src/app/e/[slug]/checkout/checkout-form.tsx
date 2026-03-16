@@ -8,23 +8,18 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Minus, Plus } from 'lucide-react';
+import { formatCents } from '@/lib/utils';
 import { createCheckoutSession } from './actions';
 import type { TicketTier } from '@/types/database';
-
-function formatCents(cents: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(cents / 100);
-}
 
 interface CheckoutFormProps {
   eventId: string;
   slug: string;
   tiers: TicketTier[];
+  venueName: string;
 }
 
-export function CheckoutForm({ eventId, slug, tiers }: CheckoutFormProps) {
+export function CheckoutForm({ eventId, slug, tiers, venueName }: CheckoutFormProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
     const initial: Record<string, number> = {};
     for (const tier of tiers) {
@@ -281,13 +276,11 @@ export function CheckoutForm({ eventId, slug, tiers }: CheckoutFormProps) {
               htmlFor="consent-marketing"
               className="text-sm leading-tight"
             >
-              I agree to receive text messages about future events from Blue
-              Barn Events
+              I agree to receive text messages about future events from {venueName}
             </label>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed pl-6">
-            By checking this box, you consent to receive text messages from Over
-            Yonder Farm about upcoming events, new event announcements, and
+            By checking this box, you consent to receive text messages from {venueName} about upcoming events, new event announcements, and
             seasonal programming. Message frequency varies, typically no more
             than 1 message per month. Message and data rates may apply. Reply
             STOP to opt out at any time. View our{' '}

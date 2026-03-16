@@ -16,8 +16,8 @@ interface SendEmailResult {
   error?: string;
 }
 
-const FROM = 'Over Yonder Farm <info@events.yonderfarm.com>';
-const REPLY_TO = 'info@yonderfarm.com';
+const FROM = process.env.EMAIL_FROM ?? 'Over Yonder Farm <info@events.yonderfarm.com>';
+const REPLY_TO = process.env.EMAIL_REPLY_TO ?? 'info@yonderfarm.com';
 
 export async function sendEmail({
   to,

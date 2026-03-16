@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, QrCode, CheckCircle2, Undo2, Download, Check, Minus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatPrice } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -64,13 +64,6 @@ const emptyWalkInForm = {
   quantity: 1,
 };
 
-function formatCents(cents: number): string {
-  if (cents === 0) return 'Free';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(cents / 100);
-}
 
 function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, '');
@@ -159,7 +152,7 @@ export function AttendeesManager({
       escapeCsvValue(t.attendee_phone ?? ''),
       escapeCsvValue(t.ticket_tiers?.name ?? ''),
       String(t.quantity),
-      formatCents(t.amount_paid_cents),
+      formatPrice(t.amount_paid_cents),
       t.status === 'checked_in' ? 'Checked In' : 'Confirmed',
       formatDate(t.purchased_at, 'yyyy-MM-dd'),
       hasConsent(t.attendee_phone, eventOptInPhones) ? 'Yes' : 'No',
@@ -359,7 +352,7 @@ export function AttendeesManager({
                           </code>
                         </TableCell>
                         <TableCell>
-                          {formatCents(ticket.amount_paid_cents)}
+                          {formatPrice(ticket.amount_paid_cents)}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {formatDate(ticket.purchased_at, 'MMM d')}
@@ -450,7 +443,7 @@ export function AttendeesManager({
                 <SelectContent>
                   {tiers.map((tier) => (
                     <SelectItem key={tier.id} value={tier.id}>
-                      {tier.name} ({formatCents(tier.price_cents)})
+                      {tier.name} ({formatPrice(tier.price_cents)})
                     </SelectItem>
                   ))}
                 </SelectContent>

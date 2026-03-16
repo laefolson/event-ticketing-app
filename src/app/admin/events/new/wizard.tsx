@@ -33,7 +33,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
+import { cn, formatPrice } from '@/lib/utils';
 import { createEvent, createTiersForEvent } from './actions';
 import type { EventType } from '@/types/database';
 
@@ -95,14 +95,6 @@ const STEPS = [
 ];
 
 const MAX_GALLERY_IMAGES = 6;
-
-function formatPrice(cents: number): string {
-  if (cents === 0) return 'Free';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(cents / 100);
-}
 
 function formatEventType(type: string): string {
   return EVENT_TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type;

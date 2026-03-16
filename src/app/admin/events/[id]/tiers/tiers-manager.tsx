@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { createTier, updateTier, deleteTier } from './actions';
 import type { TierInput } from './actions';
+import { formatPrice } from '@/lib/utils';
 import type { TicketTier } from '@/types/database';
 
 interface TiersManagerProps {
@@ -34,14 +35,6 @@ const emptyForm = {
   max_per_contact: '',
   sort_order: '0',
 };
-
-function formatPrice(cents: number): string {
-  if (cents === 0) return 'Free';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(cents / 100);
-}
 
 export function TiersManager({ tiers, eventId, eventCapacity }: TiersManagerProps) {
   const router = useRouter();

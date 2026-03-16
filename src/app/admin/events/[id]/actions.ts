@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { createServiceClient } from '@/lib/supabase/service';
 import type { ActionResponse } from '@/types/actions';
 import type { EventType } from '@/types/database';
 
@@ -139,14 +139,14 @@ export async function deleteEvent(eventId: string): Promise<ActionResponse> {
   }
 
   // Clean up storage: remove all files under event-assets/{eventId}/
-  const adminClient = createAdminClient();
-  const { data: files } = await adminClient.storage
+  const serviceClient = createServiceClient();
+  const { data: files } = await serviceClient.storage
     .from('event-assets')
     .list(eventId);
 
   if (files && files.length > 0) {
     const filePaths = files.map((f) => `${eventId}/${f.name}`);
-    await adminClient.storage.from('event-assets').remove(filePaths);
+    await serviceClient.storage.from('event-assets').remove(filePaths);
   }
 
   // Delete the event — CASCADE handles tiers, contacts, csv_imports, invitation_logs

@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { formatDate } from '@/lib/utils';
+import { formatDate, getBaseUrl } from '@/lib/utils';
 import { sendEmail } from '@/lib/resend';
 import { sendSms } from '@/lib/twilio';
 import { InvitationEmail } from '@/emails/invitation-email';
@@ -546,7 +546,7 @@ export async function sendInvitations(
   }
 
   const venueName = await getVenueName();
-  const origin = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000';
+  const origin = getBaseUrl();
   const eventUrl = `${origin}/e/${event.slug}`;
   const dateFormatted = formatDate(event.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
   const emailSubject = `You're invited to ${event.title}`;

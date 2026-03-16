@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Markdown from 'react-markdown';
 import { CalendarDays, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatPrice } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -22,14 +22,6 @@ import type { Metadata } from 'next';
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function formatCents(cents: number): string {
-  if (cents === 0) return 'Free';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(cents / 100);
-}
 
 function formatDateRange(start: string, end: string): string {
   const sDay = formatDate(start, 'yyyy-MM-dd');
@@ -50,9 +42,9 @@ function getPriceRange(tiers: TicketTier[]): string {
   const max = Math.max(...prices);
 
   if (max === 0) return 'Free';
-  if (min === max) return formatCents(min);
-  if (min === 0) return `Free – ${formatCents(max)}`;
-  return `${formatCents(min)} – ${formatCents(max)}`;
+  if (min === max) return formatPrice(min);
+  if (min === 0) return `Free – ${formatPrice(max)}`;
+  return `${formatPrice(min)} – ${formatPrice(max)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -196,7 +188,7 @@ export default async function EventPage({ params }: EventPageProps) {
                           <Badge variant="secondary">Sold Out</Badge>
                         ) : (
                           <span className="text-sm font-medium">
-                            {formatCents(tier.price_cents)}
+                            {formatPrice(tier.price_cents)}
                           </span>
                         )}
                       </div>
