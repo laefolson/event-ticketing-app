@@ -151,7 +151,7 @@ export default async function ArchiveDetailPage({
     status: t.status,
     checked_in_at: t.checked_in_at,
     tier_name:
-      (t.ticket_tiers as unknown as { name: string } | null)?.name ?? '—',
+      (t.ticket_tiers as { name: string }[])?.[0]?.name ?? '—',
   }));
 
   const stats = [

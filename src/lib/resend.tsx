@@ -1,6 +1,10 @@
 import { Resend } from 'resend';
 import * as React from 'react';
 
+if (!process.env.RESEND_API_KEY) {
+  throw new Error('Missing RESEND_API_KEY environment variable');
+}
+
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 interface SendEmailInput {

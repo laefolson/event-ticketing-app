@@ -42,8 +42,7 @@ export async function POST(request: NextRequest) {
       'svix-signature': svixSignature,
     }) as ResendWebhookPayload;
   } catch (err) {
-    const error = err as Error;
-    console.error('Resend webhook signature verification failed:', error.message);
+    console.error('Resend webhook signature verification failed:', err instanceof Error ? err.message : err);
     return NextResponse.json(
       { error: 'Invalid signature' },
       { status: 400 }

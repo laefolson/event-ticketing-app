@@ -88,7 +88,7 @@ export async function resendTickets(
 
   const ticketLines = await Promise.all(
     tickets.map(async (t) => {
-      const tierData = t.ticket_tiers as unknown as { name: string };
+      const tierData = (t.ticket_tiers as { name: string }[])[0];
       const line: { tierName: string; quantity: number; ticketCode: string; qrDataUrl?: string } = {
         tierName: tierData.name,
         quantity: t.quantity,
