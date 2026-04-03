@@ -714,6 +714,7 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                   currentUrl={formData.save_the_date_image_url}
                   onUpload={(url) => updateField('save_the_date_image_url', url)}
                   onRemove={() => updateField('save_the_date_image_url', null)}
+                  contain
                 />
               </div>
 

@@ -374,6 +374,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
                     currentUrl={formData.save_the_date_image_url}
                     onUpload={(url) => updateField('save_the_date_image_url', url)}
                     onRemove={() => updateField('save_the_date_image_url', null)}
+                    contain
                   />
                 </div>
                 <div className="space-y-2">

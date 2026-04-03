@@ -11,6 +11,8 @@ interface ImageUploadProps {
   onUpload: (url: string) => void;
   currentUrl?: string | null;
   onRemove?: () => void;
+  /** Show the full image at natural aspect ratio instead of cropping to 16:9 */
+  contain?: boolean;
 }
 
 export function ImageUpload({
@@ -19,6 +21,7 @@ export function ImageUpload({
   onUpload,
   currentUrl,
   onRemove,
+  contain = false,
 }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,14 +78,22 @@ export function ImageUpload({
   if (currentUrl) {
     return (
       <div className="relative overflow-hidden rounded-lg border">
-        <div className="relative aspect-[16/9]">
-          <Image
+        {contain ? (
+          <img
             src={currentUrl}
             alt={`${type} image`}
-            fill
-            className="object-cover"
+            className="h-auto w-full"
           />
-        </div>
+        ) : (
+          <div className="relative aspect-[16/9]">
+            <Image
+              src={currentUrl}
+              alt={`${type} image`}
+              fill
+              className="object-cover"
+            />
+          </div>
+        )}
         {onRemove && (
           <button
             type="button"
