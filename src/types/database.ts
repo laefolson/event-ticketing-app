@@ -114,6 +114,7 @@ export interface InvitationLog {
   sent_at: string;
   status: MessageStatus;
   provider_message_id: string | null;
+  error_code: string | null;
 }
 
 export interface SmsConsent {

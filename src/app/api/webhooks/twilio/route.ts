@@ -55,15 +55,48 @@ export async function POST(request: NextRequest) {
 
   const supabase = createServiceClient();
 
-  const { error } = await supabase
-    .from('invitation_logs')
-    .update({ status: dbStatus })
-    .eq('provider_message_id', messageSid);
+  if (dbStatus === 'failed') {
+    const errorCode = params.ErrorCode || null;
+    const to = params.To || 'unknown';
+    const from = params.From || 'unknown';
 
-  if (error) {
-    console.error(`Twilio webhook: failed to update status for ${messageSid}:`, error.message);
+    console.error(
+      `Twilio webhook: message ${messageSid} ${messageStatus} — error=${errorCode} to=${to} from=${from}`
+    );
+
+    const { data: log, error } = await supabase
+      .from('invitation_logs')
+      .update({ status: dbStatus, error_code: errorCode })
+      .eq('provider_message_id', messageSid)
+      .select('contact_id')
+      .single();
+
+    if (error) {
+      console.error(`Twilio webhook: failed to update status for ${messageSid}:`, error.message);
+    } else if (log?.contact_id) {
+      const { data: contact } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name, phone')
+        .eq('id', log.contact_id)
+        .single();
+
+      if (contact) {
+        console.error(
+          `Twilio webhook: failed SMS was for contact ${contact.first_name} ${contact.last_name} (${contact.phone}), id=${contact.id}`
+        );
+      }
+    }
   } else {
-    console.log(`Twilio webhook: message ${messageSid} marked as ${dbStatus}`);
+    const { error } = await supabase
+      .from('invitation_logs')
+      .update({ status: dbStatus })
+      .eq('provider_message_id', messageSid);
+
+    if (error) {
+      console.error(`Twilio webhook: failed to update status for ${messageSid}:`, error.message);
+    } else {
+      console.log(`Twilio webhook: message ${messageSid} marked as ${dbStatus}`);
+    }
   }
 
   return new NextResponse('OK', { status: 200 });
