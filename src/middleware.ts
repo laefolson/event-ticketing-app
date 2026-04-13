@@ -52,11 +52,18 @@ export async function middleware(request: NextRequest) {
     }
 
     // Check 24-hour inactivity timeout
+    // If last_activity cookie is missing, treat as expired (forces re-auth
+    // after browser clears session cookies or on first visit after long gap)
     const lastActivity = request.cookies.get('last_activity')?.value;
-    if (lastActivity && Date.now() - Number(lastActivity) > SESSION_TIMEOUT_MS) {
+    const isTimedOut = !lastActivity ||
+      Date.now() - Number(lastActivity) > SESSION_TIMEOUT_MS;
+
+    if (isTimedOut) {
       await supabase.auth.signOut();
       const redirectUrl = new URL('/auth/login', request.url);
-      redirectUrl.searchParams.set('reason', 'timeout');
+      if (lastActivity) {
+        redirectUrl.searchParams.set('reason', 'timeout');
+      }
       response = NextResponse.redirect(redirectUrl);
       response.cookies.delete('last_activity');
       return response;
