@@ -14,6 +14,7 @@
 | 1.3 | Mar 2026 | Add save-the-date feature: per-event image/text, email + SMS sending, SaveTheDateEmail template, `save_the_date` message type, wizard updated to 6 steps. |
 | 1.4 | Mar 2026 | Add SMS opt-in columns (event updates + marketing) and CSV export to attendees tab. |
 | 1.5 | Mar 2026 | Fix all dates to display in Mountain Time (`America/Denver`) via shared `formatDate` helper. Add cover image hero to ticket confirmation email. |
+| 1.6 | Apr 2026 | Add SMS opt-in checkboxes to free RSVP form (matching checkout). Add static `/sms-opt-in` disclosure page for A2P campaign registration. Add `/api/health` health check endpoint. |
 
 ---
 
@@ -269,6 +270,8 @@ RLS: service-role only (records written server-side during checkout).
 | `/e/[slug]/rsvp` | Free event RSVP form |
 | `/e/[slug]/checkout` | Stripe Checkout redirect handler |
 | `/e/[slug]/confirm` | Post-purchase/RSVP confirmation with printable ticket card |
+| `/sms-opt-in` | Static SMS opt-in disclosure page (for A2P campaign registration) |
+| `/api/health` | Health check — returns 200 with timestamp when DB is reachable, 503 otherwise |
 
 ### Webhooks (no auth — signature-verified)
 
@@ -346,9 +349,11 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
 
 **Free events:**
 1. Guest submits name, email, phone on RSVP form
-2. Server validates `max_per_contact`
-3. Create ticket with `status = confirmed`, `amount_paid_cents = 0`
-4. Redirect to confirm page
+2. If phone provided, optional SMS consent checkboxes appear (same as paid checkout)
+3. Server validates `max_per_contact`
+4. Create ticket with `status = confirmed`, `amount_paid_cents = 0`
+5. Record `sms_consents` rows if opted in
+6. Redirect to confirm page
 
 **Confirmation page (`/e/[slug]/confirm`):**
 - Printable ticket card rendered as a styled React component containing:
