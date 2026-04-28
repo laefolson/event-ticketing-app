@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -21,9 +22,10 @@ interface RsvpFormProps {
   eventId: string;
   slug: string;
   tiers: TicketTier[];
+  venueName: string;
 }
 
-export function RsvpForm({ eventId, slug, tiers }: RsvpFormProps) {
+export function RsvpForm({ eventId, slug, tiers, venueName }: RsvpFormProps) {
   const router = useRouter();
 
   const availableTiers = tiers.filter((t) => t.quantity_sold < t.quantity_total);
@@ -36,6 +38,8 @@ export function RsvpForm({ eventId, slug, tiers }: RsvpFormProps) {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [quantity, setQuantity] = useState(1);
+  const [consentEventUpdates, setConsentEventUpdates] = useState(false);
+  const [consentMarketing, setConsentMarketing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -85,6 +89,8 @@ export function RsvpForm({ eventId, slug, tiers }: RsvpFormProps) {
       attendee_email: email,
       attendee_phone: phone,
       quantity,
+      consent_event_updates: consentEventUpdates,
+      consent_marketing: consentMarketing,
     });
 
     if (!result.success) {
@@ -156,6 +162,83 @@ export function RsvpForm({ eventId, slug, tiers }: RsvpFormProps) {
           placeholder="(555) 123-4567"
         />
       </div>
+
+      {/* SMS consent checkboxes (shown only when phone has value) */}
+      {phone.trim().length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="consent-event"
+              checked={consentEventUpdates}
+              onCheckedChange={(checked) =>
+                setConsentEventUpdates(checked === true)
+              }
+            />
+            <label
+              htmlFor="consent-event"
+              className="text-sm leading-tight"
+            >
+              I agree to receive text messages about this event
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed pl-6">
+            By checking this box, you consent to receive text messages from Over
+            Yonder Farm regarding your ticket purchase and the event you are
+            attending. Messages may include order confirmations, event reminders,
+            day-of logistics, and material event updates. Message frequency
+            varies per event, typically 2–4 messages per event. Message and data
+            rates may apply. Reply STOP to opt out at any time. View our{' '}
+            <a
+              href="/privacy-policy"
+              className="underline hover:text-foreground"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Privacy Policy
+            </a>{' '}
+            and{' '}
+            <a
+              href="/terms"
+              className="underline hover:text-foreground"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Terms and Conditions
+            </a>
+            .
+          </p>
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="consent-marketing"
+              checked={consentMarketing}
+              onCheckedChange={(checked) =>
+                setConsentMarketing(checked === true)
+              }
+            />
+            <label
+              htmlFor="consent-marketing"
+              className="text-sm leading-tight"
+            >
+              I agree to receive text messages about future events from {venueName}
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed pl-6">
+            By checking this box, you consent to receive text messages from {venueName} about upcoming events, new event announcements, and
+            seasonal programming. Message frequency varies, typically no more
+            than 1 message per month. Message and data rates may apply. Reply
+            STOP to opt out at any time. View our{' '}
+            <a
+              href="/privacy-policy"
+              className="underline hover:text-foreground"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Privacy Policy
+            </a>
+            .
+          </p>
+        </div>
+      )}
 
       {/* Quantity */}
       {showQuantity && (

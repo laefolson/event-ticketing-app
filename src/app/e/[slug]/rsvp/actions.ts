@@ -1,5 +1,6 @@
 'use server';
 
+import { headers } from 'next/headers';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
@@ -23,6 +24,8 @@ const rsvpSchema = z.object({
     .max(30, 'Phone number too long')
     .transform((v) => v || null),
   quantity: z.number().int().min(1, 'Quantity must be at least 1'),
+  consent_event_updates: z.boolean(),
+  consent_marketing: z.boolean(),
 });
 
 export type RsvpInput = z.infer<typeof rsvpSchema>;
@@ -37,8 +40,16 @@ export async function submitRsvp(
     return { success: false, error: firstError.message };
   }
 
-  const { event_id, tier_id, attendee_name, attendee_email, attendee_phone, quantity } =
-    parsed.data;
+  const {
+    event_id,
+    tier_id,
+    attendee_name,
+    attendee_email,
+    attendee_phone,
+    quantity,
+    consent_event_updates,
+    consent_marketing,
+  } = parsed.data;
 
   const supabase = await createClient();
 
@@ -170,6 +181,47 @@ export async function submitRsvp(
     }).catch((err) => {
       console.error('Failed to send RSVP confirmation email:', err);
     });
+  }
+
+  // Record SMS consents if phone provided and at least one consent is true
+  if (attendee_phone && (consent_event_updates || consent_marketing)) {
+    const headersList = await headers();
+    const ipAddress =
+      headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+      headersList.get('x-real-ip') ??
+      'unknown';
+
+    const consentRecords: Array<{
+      phone: string;
+      consent_type: string;
+      consent_text: string;
+      ip_address: string;
+      event_id: string;
+    }> = [];
+
+    if (consent_event_updates) {
+      consentRecords.push({
+        phone: attendee_phone,
+        consent_type: 'event_updates',
+        consent_text: 'I agree to receive text messages about this event',
+        ip_address: ipAddress,
+        event_id,
+      });
+    }
+
+    if (consent_marketing) {
+      const vName = await getVenueName();
+      consentRecords.push({
+        phone: attendee_phone,
+        consent_type: 'marketing',
+        consent_text:
+          `I agree to receive text messages about future events from ${vName}`,
+        ip_address: ipAddress,
+        event_id,
+      });
+    }
+
+    await serviceClient.from('sms_consents').insert(consentRecords);
   }
 
   return { success: true, data: { ticketId: ticket.id } };

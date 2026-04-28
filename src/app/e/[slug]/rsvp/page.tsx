@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { getEventBySlug, getTiersForEvent } from '../queries';
+import { getVenueName } from '@/lib/settings';
 import { RsvpForm } from './rsvp-form';
 
 interface RSVPPageProps {
@@ -14,7 +15,10 @@ export default async function RSVPPage({ params }: RSVPPageProps) {
 
   if (!event) notFound();
 
-  const tiers = await getTiersForEvent(event.id);
+  const [tiers, venueName] = await Promise.all([
+    getTiersForEvent(event.id),
+    getVenueName(),
+  ]);
 
   // Only free events should reach the RSVP page
   const isFreeEvent = tiers.length === 0 || tiers.every((t) => t.price_cents === 0);
@@ -35,7 +39,7 @@ export default async function RSVPPage({ params }: RSVPPageProps) {
         Reserve your free tickets below.
       </p>
 
-      <RsvpForm eventId={event.id} slug={slug} tiers={tiers} />
+      <RsvpForm eventId={event.id} slug={slug} tiers={tiers} venueName={venueName} />
     </div>
   );
 }
