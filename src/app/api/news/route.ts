@@ -2,9 +2,12 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   const response = await fetch(
-    `https://newsapi.org/v2/everything?q=artificial+intelligence` +
-    `&sortBy=popularity&pageSize=50&language=en` +
-    `&apiKey=${process.env.NEWS_API_KEY}`
+    `https://content.guardianapis.com/search` +
+    `?q=artificial+intelligence` +
+    `&order-by=newest` +
+    `&page-size=50` +
+    `&show-fields=headline,trailText,byline,sectionName` +
+    `&api-key=${process.env.GUARDIAN_API_KEY}`
   );
   const data = await response.json();
 
