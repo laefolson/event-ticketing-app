@@ -122,6 +122,13 @@ See `.env.local`. Public vars prefixed with `NEXT_PUBLIC_`. Server-only keys: `S
 
 ## Current Status
 
-**Completed**: Project setup, auth (login + TOTP MFA + middleware), admin layout + dashboard with live stats.
+**Phase 1 is fully implemented.** All routes in `SPEC.md` §6 are built:
 
-**Most admin routes are placeholders** — events CRUD, tiers, contacts, attendees, post-event, archive, team, and settings pages have TODO comments but no implementation yet. Public event pages (`/e/[slug]/*`) are also placeholders.
+- **Auth**: login, TOTP MFA enrollment/challenge, middleware enforcement, team invite/setup flow
+- **Admin**: dashboard, event create wizard (6 steps), edit/delete, tiers (with Stripe Product/Price), contacts (CSV import + invitations + save-the-date), attendees (check-in, walk-in, SMS opt-in columns, CSV export), post-event (thank-you + archive), archive list/detail, team, settings
+- **Public**: event landing, RSVP, Stripe checkout, confirmation, ticket verify (`/e/[slug]/verify/[code]`), `/sms-opt-in`, `/api/health`
+- **Webhooks**: Stripe (`checkout.session.completed`, `charge.refunded`, `checkout.session.expired`), Resend, Twilio
+- **Email templates**: save-the-date, invitation, RSVP confirmation, ticket confirmation, thank-you
+- **Tickets**: QR toggle (`ticket_qr_enabled`), PDF download via `@react-pdf/renderer`
+
+**Remaining work is the Phase 2 backlog** (see `SPEC.md` §12) — e.g. Apple Wallet passes, QR-scan check-in, scheduled/reminder messages, waitlist, promo codes, analytics.
