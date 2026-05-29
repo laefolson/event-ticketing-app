@@ -15,6 +15,7 @@
 | 1.4 | Mar 2026 | Add SMS opt-in columns (event updates + marketing) and CSV export to attendees tab. |
 | 1.5 | Mar 2026 | Fix all dates to display in Mountain Time (`America/Denver`) via shared `formatDate` helper. Add cover image hero to ticket confirmation email. |
 | 1.6 | Apr 2026 | Add SMS opt-in checkboxes to free RSVP form (matching checkout). Add static `/sms-opt-in` disclosure page for A2P campaign registration. Add `/api/health` health check endpoint. |
+| 1.7 | May 2026 | Master contact system. New master_contacts table. contacts becomes event-contact join table. New /admin/contacts section with search, filter, CSV import, Google Sheets sync. Add-to-event from master list by search, prior event, or opt-in status. Opt-in auto-sync from checkout and RSVP. |
 
 ---
 
@@ -302,7 +303,7 @@ RLS: service-role only (records written server-side during checkout).
 
 ## 7. Features
 
-### 6.1 Event Creation Wizard
+### 7.1 Event Creation Wizard
 
 Multi-step wizard at `/admin/events/new`. A cancel button is available on every step; clicking it shows a confirmation dialog before discarding progress and returning to the events list.
 
@@ -312,7 +313,7 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
 
 > **Cover image processing:** Uploaded cover images are automatically resized/cropped to 1200×400 (3:1 aspect ratio) using Sharp. Crop position is horizontally centered, vertically at 20% from top. Output format is WebP at quality 85. Gallery images are uploaded as-is.
 
-**Step 3 — Save the Date:** optional save-the-date image upload (`save_the_date_image_url`) and custom text (`save_the_date_text`); used when sending save-the-date messages before invitations (see §6.10)
+**Step 3 — Save the Date:** optional save-the-date image upload (`save_the_date_image_url`) and custom text (`save_the_date_text`); used when sending save-the-date messages before invitations (see §7.10)
 
 **Step 4 — Ticket Tiers:**
 - Toggle: Free vs. Paid
@@ -327,7 +328,7 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
 
 ---
 
-### 6.2 Public Event Landing Page
+### 7.2 Public Event Landing Page
 
 - Not search-indexed (`noindex` meta tag)
 - Returns 404 if `link_active = false`
@@ -338,7 +339,7 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
 
 ---
 
-### 6.3 Ticketing & Payment Flow
+### 7.3 Ticketing & Payment Flow
 
 **Paid events:**
 1. Guest selects tier + quantity
@@ -368,7 +369,7 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
 
 ---
 
-### 6.4 Contact Management & CSV Import
+### 7.4 Contact Management & CSV Import
 
 - Multiple CSV uploads per event from different sources
 - Each upload tracked in `csv_imports` (filename, rows imported, rows skipped)
@@ -384,7 +385,7 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
 
 ---
 
-### 6.5 Invitation Sending
+### 7.5 Invitation Sending
 
 From `/admin/events/[id]/contacts`:
 
@@ -408,7 +409,7 @@ From `/admin/events/[id]/contacts`:
 
 ---
 
-### 6.6 Delete Event
+### 7.6 Delete Event
 
 Available on the Details tab (`/admin/events/[id]`) in a "Danger Zone" section for any event status.
 
@@ -420,7 +421,7 @@ Available on the Details tab (`/admin/events/[id]`) in a "Danger Zone" section f
 
 ---
 
-### 6.7 Post-Event Actions
+### 7.7 Post-Event Actions
 
 Available at `/admin/events/[id]/post-event` once `date_end` has passed.
 
@@ -440,7 +441,7 @@ Available at `/admin/events/[id]/post-event` once `date_end` has passed.
 
 ---
 
-### 6.8 Attendee Check-In
+### 7.8 Attendee Check-In
 
 Optional — most events run on honor system; check-in is not required.
 
@@ -455,7 +456,7 @@ Optional — most events run on honor system; check-in is not required.
 
 ---
 
-### 6.9 Event Archive
+### 7.9 Event Archive
 
 - `/admin/archive`: all archived events, sorted by date descending
 - Per-event archive page shows:
@@ -470,7 +471,7 @@ Optional — most events run on honor system; check-in is not required.
 
 ---
 
-### 6.10 Save the Date
+### 7.10 Save the Date
 
 Admins can send save-the-date messages to contacts before formal invitations are sent. This is useful for early awareness — letting guests know an event is coming without providing the full invitation link yet.
 
@@ -495,6 +496,263 @@ Admins can send save-the-date messages to contacts before formal invitations are
 **Logging:**
 - Each message logged to `invitation_logs` with `message_type = 'save_the_date'`
 - Does **not** update `contacts.invited_at` — that field is reserved for formal invitations only
+
+---
+
+### 7.11 Master Contact System
+
+> Version 1.7 addition. Replaces per-event-only contact management with a
+> global master contact list. Per-event contacts become a join between
+> master_contacts and events.
+
+#### Overview
+
+Contacts are now a first-class entity independent of events. A single
+master_contacts record exists per person (deduplicated by email). Each
+event has a contacts join table linking master_contacts to that event
+with per-event invitation metadata. This enables cross-event contact
+management, opt-in tracking, and Google Sheets sync.
+
+---
+
+#### Schema Changes
+
+##### New Table: `master_contacts`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | primary key, default gen_random_uuid() |
+| first_name | text | not null |
+| last_name | text | not null |
+| email | text | unique, not null |
+| phone | text | nullable; E.164 format e.g. +14065550123 |
+| sms_opt_in_event_updates | boolean | default false; consent to event-specific SMS |
+| sms_opt_in_marketing | boolean | default false; consent to future event SMS |
+| email_opt_out | boolean | default false; hard opt-out from all email |
+| source | enum | `manual \| csv_import \| google_sheets \| checkout \| rsvp` |
+| notes | text | nullable; internal admin notes |
+| created_at | timestamptz | default now() |
+| updated_at | timestamptz | default now(); update via trigger |
+
+RLS: authenticated users (admin/helper) can read and write.
+Public: no access.
+
+##### Modified Table: `contacts`
+
+Becomes a join table between master_contacts and events.
+Existing columns for name/email/phone are removed after migration.
+New structure:
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | primary key |
+| event_id | uuid | fk → events, not null |
+| master_contact_id | uuid | fk → master_contacts, not null |
+| invitation_channel | enum | `email \| sms \| both`; per-event override of contact preference |
+| added_by | enum | `csv_import \| google_sheets \| manual \| checkout \| rsvp \| event_copy` |
+| invited_at | timestamptz | nullable; set when formal invitation sent |
+| save_the_date_sent_at | timestamptz | nullable |
+| created_at | timestamptz | default now() |
+
+Unique constraint: (event_id, master_contact_id) — one record per
+contact per event.
+
+RLS: authenticated users only.
+
+##### Migration Plan
+
+Before schema changes, run the following migration in order:
+1. Create master_contacts table
+2. Insert one master_contacts row per unique email in existing contacts,
+   taking first_name/last_name/phone from the most recent record
+3. Set source = 'csv_import' for all migrated records
+4. Add master_contact_id column to contacts table
+5. Populate master_contact_id by matching on email
+6. Drop name/email/phone columns from contacts (after verification)
+7. Add unique constraint on (event_id, master_contact_id)
+8. Update invitation_logs to join through master_contacts where needed
+
+---
+
+#### New Route: `/admin/contacts`
+
+Top-level admin section for managing the master contact list.
+Accessible to both admin and helper roles.
+
+##### `/admin/contacts` — Master Contact List
+
+**Layout:** Full-width data table with toolbar above.
+
+**Toolbar:**
+- Search input — filters by first_name, last_name, email, phone (debounced)
+- Filter dropdown — SMS event updates opt-in: all | opted in | not opted in
+- Filter dropdown — SMS marketing opt-in: all | opted in | not opted in
+- Filter dropdown — Source: all | manual | csv_import | google_sheets | checkout | rsvp
+- Filter dropdown — Event attended: all | [list of past events by title]
+- Button: Add Contact (opens inline form or slide-over)
+- Button: Import CSV
+- Button: Sync Google Sheet
+- Button: Export CSV (exports current filtered view)
+
+**Table columns:**
+- Name (first + last, links to contact detail)
+- Email
+- Phone
+- SMS Event Updates (boolean badge: Opted In / —)
+- SMS Marketing (boolean badge: Opted In / —)
+- Events (count of events associated)
+- Source
+- Added (created_at date)
+- Actions: Edit | Delete
+
+**Pagination:** 50 per page, server-side.
+
+**Empty state:** Friendly message with prompt to import CSV or
+sync Google Sheet.
+
+---
+
+##### `/admin/contacts/[id]` — Contact Detail
+
+**Sections:**
+
+1. **Contact Info** (editable inline or via edit button)
+   - First name, last name, email, phone
+   - SMS opt-in event updates (toggle)
+   - SMS opt-in marketing (toggle)
+   - Email opt-out (toggle)
+   - Source (read-only)
+   - Notes (textarea)
+   - Save button
+
+2. **Event History**
+   Table of all events this contact is associated with:
+   - Event title
+   - Event date
+   - Role: Invitee | Attendee (has confirmed ticket) | RSVP
+   - Ticket tier (if attendee)
+   - Invitation channel used
+   - Invited at date
+   - Actions: Remove from event
+
+3. **Message History**
+   Table from invitation_logs for this contact across all events:
+   - Event title
+   - Message type (save_the_date | invitation | thank_you | reminder)
+   - Channel (email | sms)
+   - Sent at
+   - Status (if available from webhook)
+
+---
+
+#### Google Sheets Sync
+
+Allows the admin to pull contacts from a Google Sheet into master_contacts.
+Designed to replace the Apple Contacts → CSV → upload workflow.
+
+**Configuration (stored in settings or per-sync):**
+- Google Sheet URL (public sheet with anyone-with-link read access)
+- Column mapping (first_name, last_name, email, phone)
+
+**Sync behavior:**
+- Fetch rows from the sheet via Google Sheets API v4
+- For each row: upsert into master_contacts by email
+  - If email exists: update name/phone if blank, do not overwrite opt-ins
+  - If email does not exist: insert with source = 'google_sheets'
+- Show a preview modal before confirming:
+  "X new contacts, Y updated, Z skipped (invalid email)"
+- Log sync timestamp and result count
+
+**Implementation approach:**
+- Use Google Sheets API v4 with an API key (public sheets only)
+- No OAuth required if the sheet is set to "anyone with link can view"
+- Sheet URL parsed to extract sheet ID
+- Fetch via:
+  GET https://sheets.googleapis.com/v4/spreadsheets/{id}/values/{range}
+  ?key={GOOGLE_SHEETS_API_KEY}
+- New env variable: GOOGLE_SHEETS_API_KEY
+  (separate from NEXT_PUBLIC_GOOGLE_MAPS_API_KEY —
+  restrict this key to Sheets API only in Google Cloud Console)
+
+**Column mapping UI:**
+- After entering sheet URL, fetch the first row (headers)
+- Display a mapping interface:
+  "Which column is first name?" → dropdown of detected headers
+- Save mapping for subsequent syncs
+
+---
+
+#### Add Contacts to Event From Master List
+
+On `/admin/events/[id]/contacts`, add a new "Add from Master List"
+button alongside the existing CSV upload. Opens a slide-over panel with:
+
+**Tabs:**
+
+1. **Search & Select**
+   - Search by name, email, or phone
+   - Results show name, email, opt-in status, events attended count
+   - Checkbox select individual contacts
+   - Shows "Already added to this event" badge for existing contacts
+
+2. **By Prior Event**
+   - Dropdown: select a past event
+   - Shows count of contacts from that event
+   - Option: All contacts from that event | Only attendees (confirmed ticket/RSVP)
+   - Checkbox to filter: only those with SMS opt-in | only those with email
+
+3. **By Opt-In Status**
+   - Checkboxes: SMS event updates opted in | SMS marketing opted in
+   - Excludes contacts already added to this event
+   - Shows count of matching contacts
+
+**Shared behavior across all tabs:**
+- Selected contacts shown in a staging area at the bottom
+- Set invitation_channel for the batch: email | sms | both
+- "Add X contacts to event" confirm button
+- Deduplication: skip contacts already in this event silently
+- Added with added_by = 'manual' or 'event_copy' as appropriate
+
+---
+
+#### Opt-In Sync From Checkout and RSVP
+
+When a guest completes checkout (Stripe webhook) or free RSVP:
+
+1. Check master_contacts for existing record matching attendee_email
+2. If found:
+   - Update sms_opt_in_event_updates if guest opted in and it was false
+   - Update sms_opt_in_marketing if guest opted in and it was false
+   - Never downgrade an existing true opt-in to false via this flow
+   - Update phone if currently blank and guest provided one
+3. If not found:
+   - Create new master_contacts record with source = 'checkout' or 'rsvp'
+   - Set opt-in fields from checkout selections
+4. Upsert a contacts join record linking this master_contact to the event
+   with added_by = 'checkout' or 'rsvp'
+
+---
+
+#### CSV Import to Master List
+
+Existing CSV upload logic adapted for master_contacts.
+
+**Accepted columns (case-insensitive header matching):**
+- first_name / firstname / first (required)
+- last_name / lastname / last (required)
+- email (required)
+- phone / mobile / cell (optional)
+- sms_opt_in / sms_consent (optional; accepts true/false/yes/no/1/0)
+
+**Behavior:**
+- Upsert by email — existing records updated, not duplicated
+- New records: source = 'csv_import'
+- Existing records: update name/phone only if currently blank
+- Never overwrite existing opt-in = true with false from CSV
+- Show import summary: X added, Y updated, Z skipped (missing email)
+- Available from: /admin/contacts (imports to master list only)
+  and /admin/events/[id]/contacts (imports to master list AND
+  adds to event in one step)
 
 ---
 
@@ -588,6 +846,7 @@ All email templates built in **Resend React Email** format. Must be responsive a
 | `TWILIO_MESSAGING_SERVICE_SID` | |
 | `NEXT_PUBLIC_BASE_URL` | e.g. `https://events.yourdomain.com` |
 | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | For location map iframe (optional) |
+| `GOOGLE_SHEETS_API_KEY` | Server only; Google Sheets API v4 read access for master contact sync. Restrict to Sheets API only in Google Cloud Console |
 
 ---
 
@@ -602,9 +861,13 @@ All email templates built in **Resend React Email** format. Must be responsive a
 - [ ] Recurring events / clone a past event as template
 - [ ] Guest self-service: cancel or transfer ticket
 - [ ] Promo codes / discounts
-- [ ] Google Contacts or CRM sync for master contact list
 - [ ] Custom subdomain (e.g. `events.yourfarm.com`)
 - [ ] Event analytics dashboard (page views, conversion rate)
+- [ ] Apple Contacts direct sync via CardDAV
+- [ ] Bulk SMS/email send to filtered master contact segment (not tied to a specific event)
+- [ ] Contact merge tool for duplicate records
+- [ ] Unsubscribe/opt-out landing page for email footer links
+- [ ] Import history log showing all past CSV and sheet syncs
 
 ---
 
