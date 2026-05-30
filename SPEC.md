@@ -505,6 +505,10 @@ Admins can send save-the-date messages to contacts before formal invitations are
 > global master contact list. Per-event contacts become a join between
 > master_contacts and events.
 
+> **Implementation status:**
+> - **Phase 1 — Database (additive):** implemented in `supabase/migrations/20260530100000_master_contacts_additive.sql` and applied to dev. The original `contacts.first_name/last_name/email/phone/csv_source/imported_at` columns are intentionally retained alongside the new join-table columns; a follow-up destructive migration will drop them after data verification on production. Prerequisite RLS fix `supabase/migrations/20260530090000_fix_team_members_rls.sql` was applied first to resolve `42P17` infinite-recursion on `team_members` and to introduce the `is_team_member()` / `is_team_admin()` SECURITY DEFINER helpers, which the new `master_contacts` policies reuse.
+> - **Phases 2–6:** pending.
+
 #### Overview
 
 Contacts are now a first-class entity independent of events. A single
