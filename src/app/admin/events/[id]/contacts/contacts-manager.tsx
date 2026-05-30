@@ -321,13 +321,15 @@ export function ContactsManager({
         return;
       }
 
-      if (!hasEmail && !hasPhone) {
+      if (!hasEmail) {
         setCsvError(
-          'CSV must include at least one of "email" or "phone" columns.'
+          'CSV must include an "email" column. Phone-only contacts are no longer supported via CSV — add them manually.'
         );
         setCsvParsing(false);
         return;
       }
+      // hasPhone is now informational; phone column is optional.
+      void hasPhone;
 
       const rows: CsvRow[] = parsed.data.map((row) => ({
         first_name: row.first_name?.trim() ?? '',
@@ -1135,14 +1137,35 @@ export function ContactsManager({
                 <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
                 <div className="space-y-1 text-sm">
                   <p className="font-medium text-green-800 dark:text-green-200">
-                    {importResult.importedCount} of {importResult.totalRows}{' '}
-                    contacts imported
+                    {importResult.addedToEvent} of {importResult.totalRows}{' '}
+                    contacts added to this event
                   </p>
-                  {importResult.skippedCount > 0 && (
-                    <p className="text-green-700 dark:text-green-300">
-                      {importResult.skippedCount} skipped
-                    </p>
-                  )}
+                  <ul className="text-green-700 dark:text-green-300 list-disc list-inside space-y-0.5">
+                    {importResult.addedToMaster > 0 && (
+                      <li>{importResult.addedToMaster} new in master list</li>
+                    )}
+                    {importResult.updatedInMaster > 0 && (
+                      <li>{importResult.updatedInMaster} matched existing master contacts</li>
+                    )}
+                    {importResult.alreadyInEvent > 0 && (
+                      <li>{importResult.alreadyInEvent} already linked to this event</li>
+                    )}
+                    {importResult.optInEventPromoted > 0 && (
+                      <li>
+                        {importResult.optInEventPromoted} SMS event-update opt-in
+                        {importResult.optInEventPromoted === 1 ? '' : 's'} added
+                      </li>
+                    )}
+                    {importResult.optInMarketingPromoted > 0 && (
+                      <li>
+                        {importResult.optInMarketingPromoted} SMS marketing opt-in
+                        {importResult.optInMarketingPromoted === 1 ? '' : 's'} added
+                      </li>
+                    )}
+                    {importResult.skippedCount > 0 && (
+                      <li>{importResult.skippedCount} skipped (see below)</li>
+                    )}
+                  </ul>
                 </div>
               </div>
 
@@ -1188,10 +1211,11 @@ export function ContactsManager({
                   Expected columns:
                 </p>
                 <p>
-                  <strong>first_name</strong>, <strong>last_name</strong> (required)
+                  <strong>first_name</strong>, <strong>last_name</strong>,{' '}
+                  <strong>email</strong> (required)
                 </p>
                 <p>
-                  <strong>email</strong> and/or <strong>phone</strong> (at least one)
+                  <strong>phone</strong> (optional)
                 </p>
                 <p>
                   <strong>invitation_channel</strong> (optional: email, sms,

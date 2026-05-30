@@ -10,6 +10,7 @@ import { SaveTheDateEmail } from '@/emails/save-the-date-email';
 import type { ActionResponse } from '@/types/actions';
 import { getVenueName } from '@/lib/settings';
 import type { InvitationChannel } from '@/types/database';
+import { processMasterContactsCsv } from '@/lib/master-contacts-import';
 
 const channelEnum = z.enum(['email', 'sms', 'both', 'none']);
 
@@ -35,31 +36,33 @@ const contactSchema = z
 
 export type ContactInput = z.infer<typeof contactSchema>;
 
-const csvRowSchema = z.object({
-  first_name: z.string().min(1, 'First name is required').max(200),
-  last_name: z.string().min(1, 'Last name is required').max(200),
-  email: z
-    .string()
-    .email('Invalid email')
-    .optional()
-    .nullable()
-    .transform((v) => v || null),
-  phone: z
-    .string()
-    .max(30)
-    .optional()
-    .nullable()
-    .transform((v) => v || null),
-  invitation_channel: channelEnum.optional().nullable(),
-});
-
-export type CsvRow = z.infer<typeof csvRowSchema>;
+// Per-row validation now lives in src/lib/master-contacts-import; this type
+// describes the shape the client constructs after Papa.parse.
+export interface CsvRow {
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  invitation_channel: InvitationChannel | null;
+}
 
 export interface ImportResult {
   importId: string;
   totalRows: number;
-  importedCount: number;
+  /** Newly inserted into master_contacts. */
+  addedToMaster: number;
+  /** Matched an existing master_contacts row (may or may not have changed fields). */
+  updatedInMaster: number;
+  /** New contacts join rows created for this event. */
+  addedToEvent: number;
+  /** Master contact was already linked to this event — silently skipped. */
+  alreadyInEvent: number;
+  /** Rows that failed validation (missing email, invalid email, etc.). */
   skippedCount: number;
+  /** Existing contacts whose SMS event-updates opt-in flipped from false to true during this import. */
+  optInEventPromoted: number;
+  /** Existing contacts whose SMS marketing opt-in flipped from false to true during this import. */
+  optInMarketingPromoted: number;
   skippedDetails: Array<{ row: number; reason: string }>;
 }
 
@@ -248,121 +251,113 @@ export async function importContacts(
   if (rows.length === 0) {
     return { success: false, error: 'CSV file is empty.' };
   }
-
   const payloadSize = new Blob([JSON.stringify(rows)]).size;
   if (payloadSize > 5 * 1024 * 1024) {
     return { success: false, error: 'CSV data exceeds 5 MB limit.' };
   }
-
   if (rows.length > 5000) {
     return { success: false, error: 'CSV file exceeds 5,000 row limit.' };
   }
 
   const supabase = await createClient();
-
   const {
     data: { user },
     error: authError,
   } = await supabase.auth.getUser();
-
   if (authError || !user) {
     return { success: false, error: 'You must be logged in.' };
   }
 
-  // Fetch existing contacts for dedup
-  const { data: existingContacts } = await supabase
-    .from('contacts')
-    .select('email, phone')
-    .eq('event_id', eventId);
-
-  const emailSet = new Set<string>();
-  const phoneSet = new Set<string>();
-  for (const c of existingContacts ?? []) {
-    if (c.email) emailSet.add(c.email.toLowerCase());
-    if (c.phone) phoneSet.add(c.phone);
+  // Step 1: upsert into master_contacts via the shared helper.
+  let summary;
+  try {
+    summary = await processMasterContactsCsv(
+      supabase,
+      rows.map((r) => ({
+        first_name: r.first_name,
+        last_name: r.last_name,
+        email: r.email,
+        phone: r.phone,
+      }))
+    );
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
   }
 
-  const validRows: Array<{
+  // Map row index → master_contact_id for rows that successfully landed in master_contacts.
+  const masterIdByRow = new Map<number, string>();
+  for (const o of summary.outcomes) {
+    if ((o.status === 'added' || o.status === 'updated') && o.masterContactId) {
+      masterIdByRow.set(o.rowIndex, o.masterContactId);
+    }
+  }
+
+  // Step 2: discover which master_contacts are already linked to this event.
+  const allMasterIds = Array.from(new Set(masterIdByRow.values()));
+  const { data: alreadyLinked } = allMasterIds.length > 0
+    ? await supabase
+        .from('contacts')
+        .select('master_contact_id')
+        .eq('event_id', eventId)
+        .in('master_contact_id', allMasterIds)
+    : { data: [] as { master_contact_id: string | null }[] };
+  const alreadyLinkedIds = new Set(
+    (alreadyLinked ?? [])
+      .map((r) => r.master_contact_id as string | null)
+      .filter((id): id is string => id !== null)
+  );
+
+  // Step 3: build contacts join rows for masters not yet linked to this event.
+  // Legacy first_name/last_name/email/phone/csv_source columns are also populated
+  // during the transition until the destructive migration drops them.
+  interface JoinRow {
     event_id: string;
+    master_contact_id: string;
+    invitation_channel: InvitationChannel;
+    added_by: 'csv_import';
+    csv_source: string;
     first_name: string;
     last_name: string;
-    email: string | null;
+    email: string;
     phone: string | null;
-    invitation_channel: InvitationChannel;
-    csv_source: string;
-  }> = [];
-  const skippedDetails: Array<{ row: number; reason: string }> = [];
-
-  // Also track within-CSV dedup
-  const csvEmailSet = new Set<string>();
-  const csvPhoneSet = new Set<string>();
+  }
+  const joinRows: JoinRow[] = [];
+  const seenMasterIds = new Set<string>();
 
   for (let i = 0; i < rows.length; i++) {
-    const rowNum = i + 1;
-    const parsed = csvRowSchema.safeParse(rows[i]);
+    const masterId = masterIdByRow.get(i);
+    if (!masterId) continue;
+    if (alreadyLinkedIds.has(masterId)) continue;
+    if (seenMasterIds.has(masterId)) continue;
+    seenMasterIds.add(masterId);
 
-    if (!parsed.success) {
-      const msg = parsed.error.issues.map((iss) => iss.message).join('; ');
-      skippedDetails.push({ row: rowNum, reason: msg });
-      continue;
-    }
-
-    const { first_name, last_name, email, phone, invitation_channel } = parsed.data;
-
-    // Must have at least one of email or phone
-    if (!email && !phone) {
-      skippedDetails.push({ row: rowNum, reason: 'Missing both email and phone' });
-      continue;
-    }
-
-    // Dedup against existing contacts
-    if (email && emailSet.has(email.toLowerCase())) {
-      skippedDetails.push({ row: rowNum, reason: `Duplicate email: ${email}` });
-      continue;
-    }
-    if (!email && phone && phoneSet.has(phone)) {
-      skippedDetails.push({ row: rowNum, reason: `Duplicate phone: ${phone}` });
-      continue;
-    }
-
-    // Dedup within CSV
-    if (email && csvEmailSet.has(email.toLowerCase())) {
-      skippedDetails.push({ row: rowNum, reason: `Duplicate email within CSV: ${email}` });
-      continue;
-    }
-    if (!email && phone && csvPhoneSet.has(phone)) {
-      skippedDetails.push({ row: rowNum, reason: `Duplicate phone within CSV: ${phone}` });
-      continue;
-    }
-
-    // Track for within-CSV dedup
-    if (email) csvEmailSet.add(email.toLowerCase());
-    if (phone) csvPhoneSet.add(phone);
-
-    const channel = invitation_channel ?? defaultChannel(email, phone);
-
-    validRows.push({
+    const r = rows[i];
+    const email = (r.email ?? '').trim().toLowerCase();
+    const phone = (r.phone ?? '').trim() || null;
+    joinRows.push({
       event_id: eventId,
-      first_name,
-      last_name,
+      master_contact_id: masterId,
+      invitation_channel: r.invitation_channel ?? defaultChannel(email, phone),
+      added_by: 'csv_import',
+      csv_source: filename,
+      first_name: (r.first_name ?? '').trim(),
+      last_name: (r.last_name ?? '').trim(),
       email,
       phone,
-      invitation_channel: channel,
-      csv_source: filename,
     });
   }
 
-  if (validRows.length > 0) {
-    const { error: insertError } = await supabase
-      .from('contacts')
-      .insert(validRows);
-
-    if (insertError) {
-      return { success: false, error: insertError.message };
+  if (joinRows.length > 0) {
+    const { error: joinErr } = await supabase.from('contacts').insert(joinRows);
+    if (joinErr) {
+      return {
+        success: false,
+        error: `Master contacts updated, but failed to link to event: ${joinErr.message}`,
+      };
     }
   }
 
-  // Insert csv_imports record
+  // Step 4: csv_imports tracking record.
   const { data: importRecord, error: importError } = await supabase
     .from('csv_imports')
     .insert({
@@ -370,13 +365,12 @@ export async function importContacts(
       filename,
       storage_path: 'inline',
       row_count: rows.length,
-      imported_count: validRows.length,
-      skipped_count: skippedDetails.length,
+      imported_count: joinRows.length,
+      skipped_count: summary.skipped,
       imported_by: user.id,
     })
     .select('id')
     .single();
-
   if (importError) {
     return { success: false, error: importError.message };
   }
@@ -386,9 +380,14 @@ export async function importContacts(
     data: {
       importId: importRecord.id,
       totalRows: rows.length,
-      importedCount: validRows.length,
-      skippedCount: skippedDetails.length,
-      skippedDetails,
+      addedToMaster: summary.added,
+      updatedInMaster: summary.updated,
+      addedToEvent: joinRows.length,
+      alreadyInEvent: alreadyLinkedIds.size,
+      skippedCount: summary.skipped,
+      optInEventPromoted: summary.optInEventPromoted,
+      optInMarketingPromoted: summary.optInMarketingPromoted,
+      skippedDetails: summary.skippedDetails,
     },
   };
 }

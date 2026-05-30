@@ -15,6 +15,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/utils';
 import { AddContactSheet } from './add-contact-sheet';
+import { ImportCsvDialog } from './import-csv-dialog';
 import type { MasterContact } from '@/types/database';
 
 interface Props {
@@ -82,6 +83,7 @@ export function ContactsManager({
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Contacts</h1>
         <div className="flex items-center gap-2">
+          <ImportCsvDialog />
           <Link
             href={exportHref}
             className="inline-flex items-center gap-2 px-3 py-2 rounded-md border text-sm font-medium hover:bg-muted transition-colors"

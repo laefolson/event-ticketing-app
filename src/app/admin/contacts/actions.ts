@@ -5,6 +5,10 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import type { ActionResponse } from '@/types/actions';
 import type { MasterContact } from '@/types/database';
+import {
+  processMasterContactsCsv,
+  type MasterCsvRow,
+} from '@/lib/master-contacts-import';
 
 const contactInputSchema = z.object({
   first_name: z.string().trim().min(1, 'First name is required').max(120),
@@ -101,4 +105,51 @@ export async function deleteMasterContact(id: string): Promise<ActionResponse<{ 
   if (error) return { success: false, error: error.message };
   revalidatePath('/admin/contacts');
   return { success: true, data: { id } };
+}
+
+export interface MasterImportResult {
+  totalRows: number;
+  added: number;
+  updated: number;
+  skipped: number;
+  optInEventPromoted: number;
+  optInMarketingPromoted: number;
+  skippedDetails: Array<{ row: number; reason: string }>;
+}
+
+export async function importMasterContacts(
+  rows: MasterCsvRow[]
+): Promise<ActionResponse<MasterImportResult>> {
+  if (rows.length === 0) {
+    return { success: false, error: 'CSV file is empty.' };
+  }
+  const payloadSize = new Blob([JSON.stringify(rows)]).size;
+  if (payloadSize > 5 * 1024 * 1024) {
+    return { success: false, error: 'CSV data exceeds 5 MB limit.' };
+  }
+  if (rows.length > 5000) {
+    return { success: false, error: 'CSV file exceeds 5,000 row limit.' };
+  }
+
+  const supabase = await createClient();
+  let summary;
+  try {
+    summary = await processMasterContactsCsv(supabase, rows);
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+
+  revalidatePath('/admin/contacts');
+  return {
+    success: true,
+    data: {
+      totalRows: rows.length,
+      added: summary.added,
+      updated: summary.updated,
+      skipped: summary.skipped,
+      optInEventPromoted: summary.optInEventPromoted,
+      optInMarketingPromoted: summary.optInMarketingPromoted,
+      skippedDetails: summary.skippedDetails,
+    },
+  };
 }
