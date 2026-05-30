@@ -9,6 +9,8 @@ export type TeamRole = 'admin' | 'helper';
 export type MessageType = 'invitation' | 'thank_you' | 'save_the_date' | 'ticket_resend';
 export type MessageChannel = 'email' | 'sms';
 export type MessageStatus = 'sent' | 'delivered' | 'failed' | 'bounced';
+export type ContactSource = 'manual' | 'csv_import' | 'google_sheets' | 'checkout' | 'rsvp';
+export type ContactAddedBy = 'csv_import' | 'google_sheets' | 'manual' | 'checkout' | 'rsvp' | 'event_copy';
 
 export interface Event {
   id: string;
@@ -55,14 +57,35 @@ export interface TicketTier {
 export interface Contact {
   id: string;
   event_id: string;
+  // Legacy columns retained until the destructive follow-up migration drops them.
   first_name: string | null;
   last_name: string | null;
   email: string | null;
   phone: string | null;
-  invitation_channel: InvitationChannel;
-  invited_at: string | null;
   csv_source: string | null;
   imported_at: string;
+  // Join-table columns added by migration 20260530100000.
+  master_contact_id: string | null;
+  invitation_channel: InvitationChannel;
+  added_by: ContactAddedBy | null;
+  invited_at: string | null;
+  save_the_date_sent_at: string | null;
+  created_at: string;
+}
+
+export interface MasterContact {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  sms_opt_in_event_updates: boolean;
+  sms_opt_in_marketing: boolean;
+  email_opt_out: boolean;
+  source: ContactSource;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Ticket {

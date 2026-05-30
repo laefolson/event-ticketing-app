@@ -38,6 +38,12 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
                 Events
               </Link>
               <Link
+                href="/admin/contacts"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Contacts
+              </Link>
+              <Link
                 href="/admin/archive"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
