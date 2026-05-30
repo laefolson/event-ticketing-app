@@ -11,6 +11,7 @@ import type { ActionResponse } from '@/types/actions';
 import { getVenueName } from '@/lib/settings';
 import type { InvitationChannel } from '@/types/database';
 import { processMasterContactsCsv } from '@/lib/master-contacts-import';
+import { normalizePhone } from '@/lib/phone';
 
 const channelEnum = z.enum(['email', 'sms', 'both', 'none']);
 
@@ -333,7 +334,7 @@ export async function importContacts(
 
     const r = rows[i];
     const email = (r.email ?? '').trim().toLowerCase();
-    const phone = (r.phone ?? '').trim() || null;
+    const phone = normalizePhone(r.phone);
     joinRows.push({
       event_id: eventId,
       master_contact_id: masterId,

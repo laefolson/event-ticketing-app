@@ -5,6 +5,7 @@
 
 import type { createClient } from '@/lib/supabase/server';
 import type { ContactSource } from '@/types/database';
+import { normalizePhone } from '@/lib/phone';
 
 export type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -60,11 +61,21 @@ function norm(s?: string | null): string {
   return (s ?? '').trim();
 }
 
+export interface ProcessOptions {
+  source?: ContactSource;
+  /** When true, validate + categorize but do not write inserts or updates. */
+  dryRun?: boolean;
+}
+
 export async function processMasterContactsCsv(
   supabase: SupabaseServerClient,
   rows: MasterCsvRow[],
-  source: ContactSource = 'csv_import'
+  options: ProcessOptions | ContactSource = {}
 ): Promise<ImportSummary> {
+  // Back-compat: existing callers pass a bare source string.
+  const opts: ProcessOptions = typeof options === 'string' ? { source: options } : options;
+  const source: ContactSource = opts.source ?? 'csv_import';
+  const dryRun = opts.dryRun ?? false;
   const outcomes: RowOutcome[] = [];
   const skippedDetails: Array<{ row: number; reason: string }> = [];
 
@@ -88,7 +99,7 @@ export async function processMasterContactsCsv(
     const first_name = norm(r.first_name);
     const last_name = norm(r.last_name);
     const email = norm(r.email).toLowerCase();
-    const phone = norm(r.phone) || null;
+    const phone = normalizePhone(r.phone);
 
     if (!email) {
       outcomes.push({ rowIndex: i, status: 'skipped', reason: 'Missing email' });
@@ -179,7 +190,9 @@ export async function processMasterContactsCsv(
     const fields: Partial<Insertable> = {};
     if (!existing.first_name && v.first_name) fields.first_name = v.first_name;
     if (!existing.last_name && v.last_name) fields.last_name = v.last_name;
-    if (!existing.phone && v.phone) fields.phone = v.phone;
+    // Phone: the source of truth wins. Update whenever the import provides
+    // a phone and it differs from what's already stored.
+    if (v.phone && v.phone !== existing.phone) fields.phone = v.phone;
     // Never downgrade an existing true opt-in to false; track promotions for the summary.
     if (v.sms_event && !existing.sms_opt_in_event_updates) {
       fields.sms_opt_in_event_updates = true;
@@ -203,27 +216,43 @@ export async function processMasterContactsCsv(
   }
 
   if (toInsert.length > 0) {
-    const { data: inserted, error: insertError } = await supabase
-      .from('master_contacts')
-      .insert(toInsert)
-      .select('id, email');
-    if (insertError) {
-      throw new Error(`Failed to insert master_contacts: ${insertError.message}`);
-    }
-    const idByEmail = new Map(
-      (inserted ?? []).map((r) => [r.email as string, r.id as string])
-    );
-    for (const meta of insertMeta) {
-      outcomes.push({
-        rowIndex: meta.rowIndex,
-        status: 'added',
-        masterContactId: idByEmail.get(meta.email),
-        email: meta.email,
-      });
+    if (dryRun) {
+      for (const meta of insertMeta) {
+        outcomes.push({
+          rowIndex: meta.rowIndex,
+          status: 'added',
+          email: meta.email,
+        });
+      }
+    } else {
+      const { data: inserted, error: insertError } = await supabase
+        .from('master_contacts')
+        .insert(toInsert)
+        .select('id, email');
+      if (insertError) {
+        throw new Error(`Failed to insert master_contacts: ${insertError.message}`);
+      }
+      const idByEmail = new Map(
+        (inserted ?? []).map((r) => [r.email as string, r.id as string])
+      );
+      for (const meta of insertMeta) {
+        outcomes.push({
+          rowIndex: meta.rowIndex,
+          status: 'added',
+          masterContactId: idByEmail.get(meta.email),
+          email: meta.email,
+        });
+      }
     }
   }
 
   for (const u of toUpdate) {
+    if (dryRun) {
+      outcomes.push({
+        rowIndex: u.rowIndex, status: 'updated', masterContactId: u.id, email: u.email,
+      });
+      continue;
+    }
     const { error: updateError } = await supabase
       .from('master_contacts')
       .update(u.fields)
