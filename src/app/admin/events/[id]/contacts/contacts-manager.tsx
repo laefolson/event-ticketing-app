@@ -57,11 +57,13 @@ import {
 import type { ContactInput, CsvRow, ImportResult, InvitationScope, InvitationResult, SaveTheDateScope, SaveTheDateResult } from './actions';
 import type { Contact, CsvImport, InvitationChannel } from '@/types/database';
 import { formatDate } from '@/lib/utils';
+import { AddFromMasterSheet } from './add-from-master-sheet';
 
 interface ContactsManagerProps {
   contacts: Contact[];
   csvImports: CsvImport[];
   eventId: string;
+  priorEvents: { id: string; title: string }[];
 }
 
 const emptyForm = {
@@ -137,6 +139,7 @@ export function ContactsManager({
   contacts,
   csvImports,
   eventId,
+  priorEvents,
 }: ContactsManagerProps) {
   const router = useRouter();
 
@@ -524,6 +527,7 @@ export function ContactsManager({
               </Button>
             </>
           )}
+          <AddFromMasterSheet eventId={eventId} priorEvents={priorEvents} />
           <Button variant="outline" onClick={openCsvDialog}>
             <Upload className="mr-2 h-4 w-4" />
             Upload CSV

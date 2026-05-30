@@ -35,11 +35,21 @@ export default async function ContactsPage({ params }: ContactsPageProps) {
     .eq('event_id', id)
     .order('imported_at', { ascending: false });
 
+  const { data: priorEventsData } = await supabase
+    .from('events')
+    .select('id, title')
+    .neq('id', id)
+    .order('date_start', { ascending: false });
+
   return (
     <ContactsManager
       contacts={contacts ?? []}
       csvImports={csvImports ?? []}
       eventId={event.id}
+      priorEvents={(priorEventsData ?? []).map((e) => ({
+        id: e.id as string,
+        title: e.title as string,
+      }))}
     />
   );
 }

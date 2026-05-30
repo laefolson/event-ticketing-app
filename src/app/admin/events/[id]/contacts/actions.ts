@@ -777,3 +777,280 @@ export async function sendSaveTheDates(
 
   return { success: true, data: { sent, failed, failedDetails } };
 }
+
+// ============================================================
+// Phase 4: Add from Master List
+// ============================================================
+
+const MASTER_PICK_LIMIT = 100;
+
+export interface PickableMasterContact {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  sms_opt_in_event_updates: boolean;
+  sms_opt_in_marketing: boolean;
+  isAlreadyInEvent: boolean;
+  eventCount: number;
+}
+
+async function attachAlreadyInEventFlags(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventId: string,
+  masters: Array<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string | null;
+    sms_opt_in_event_updates: boolean;
+    sms_opt_in_marketing: boolean;
+  }>
+): Promise<PickableMasterContact[]> {
+  if (masters.length === 0) return [];
+  const ids = masters.map((m) => m.id);
+
+  const [{ data: linkedInThisEvent }, { data: allLinks }] = await Promise.all([
+    supabase
+      .from('contacts')
+      .select('master_contact_id')
+      .eq('event_id', eventId)
+      .in('master_contact_id', ids),
+    supabase
+      .from('contacts')
+      .select('master_contact_id')
+      .in('master_contact_id', ids),
+  ]);
+
+  const linkedSet = new Set(
+    (linkedInThisEvent ?? [])
+      .map((r) => r.master_contact_id as string | null)
+      .filter((x): x is string => x !== null)
+  );
+  const eventCountById = new Map<string, number>();
+  for (const r of allLinks ?? []) {
+    const mid = r.master_contact_id as string | null;
+    if (mid) eventCountById.set(mid, (eventCountById.get(mid) ?? 0) + 1);
+  }
+
+  return masters.map((m) => ({
+    ...m,
+    isAlreadyInEvent: linkedSet.has(m.id),
+    eventCount: eventCountById.get(m.id) ?? 0,
+  }));
+}
+
+export async function searchMasterContactsForEvent(
+  eventId: string,
+  query: string
+): Promise<ActionResponse<PickableMasterContact[]>> {
+  const supabase = await createClient();
+  let q = supabase
+    .from('master_contacts')
+    .select(
+      'id, first_name, last_name, email, phone, sms_opt_in_event_updates, sms_opt_in_marketing'
+    )
+    .order('created_at', { ascending: false })
+    .limit(MASTER_PICK_LIMIT);
+
+  const term = query.trim().replace(/[%,]/g, ' ');
+  if (term) {
+    q = q.or(
+      `first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%`
+    );
+  }
+
+  const { data, error } = await q;
+  if (error) return { success: false, error: error.message };
+  const enriched = await attachAlreadyInEventFlags(
+    supabase,
+    eventId,
+    (data ?? []) as PickableMasterContact[]
+  );
+  return { success: true, data: enriched };
+}
+
+export async function getMasterContactsForPriorEvent(
+  eventId: string,
+  priorEventId: string,
+  attendeesOnly: boolean
+): Promise<ActionResponse<PickableMasterContact[]>> {
+  const supabase = await createClient();
+
+  const { data: contactRows, error: contactErr } = await supabase
+    .from('contacts')
+    .select('master_contact_id')
+    .eq('event_id', priorEventId)
+    .not('master_contact_id', 'is', null);
+  if (contactErr) return { success: false, error: contactErr.message };
+
+  let masterIds = Array.from(
+    new Set(
+      (contactRows ?? [])
+        .map((r) => r.master_contact_id as string | null)
+        .filter((x): x is string => x !== null)
+    )
+  );
+
+  if (attendeesOnly && masterIds.length > 0) {
+    const { data: ticketsData } = await supabase
+      .from('tickets')
+      .select('attendee_email, contact_id')
+      .eq('event_id', priorEventId)
+      .in('status', ['confirmed', 'checked_in']);
+    const attendeeEmails = new Set(
+      (ticketsData ?? [])
+        .map((t) => (t.attendee_email as string | null)?.toLowerCase())
+        .filter(Boolean) as string[]
+    );
+    // Resolve ticket attendee emails back to master ids
+    if (attendeeEmails.size > 0) {
+      const { data: masterAttendees } = await supabase
+        .from('master_contacts')
+        .select('id')
+        .in('email', Array.from(attendeeEmails));
+      const allowed = new Set(
+        (masterAttendees ?? []).map((m) => m.id as string)
+      );
+      masterIds = masterIds.filter((id) => allowed.has(id));
+    } else {
+      masterIds = [];
+    }
+  }
+
+  if (masterIds.length === 0) {
+    return { success: true, data: [] };
+  }
+
+  const { data, error } = await supabase
+    .from('master_contacts')
+    .select(
+      'id, first_name, last_name, email, phone, sms_opt_in_event_updates, sms_opt_in_marketing'
+    )
+    .in('id', masterIds)
+    .order('created_at', { ascending: false })
+    .limit(MASTER_PICK_LIMIT);
+  if (error) return { success: false, error: error.message };
+  const enriched = await attachAlreadyInEventFlags(
+    supabase,
+    eventId,
+    (data ?? []) as PickableMasterContact[]
+  );
+  return { success: true, data: enriched };
+}
+
+export async function getMasterContactsByOptIn(
+  eventId: string,
+  optInEvent: boolean,
+  optInMarketing: boolean
+): Promise<ActionResponse<PickableMasterContact[]>> {
+  const supabase = await createClient();
+  let q = supabase
+    .from('master_contacts')
+    .select(
+      'id, first_name, last_name, email, phone, sms_opt_in_event_updates, sms_opt_in_marketing'
+    )
+    .order('created_at', { ascending: false })
+    .limit(MASTER_PICK_LIMIT);
+
+  if (optInEvent) q = q.eq('sms_opt_in_event_updates', true);
+  if (optInMarketing) q = q.eq('sms_opt_in_marketing', true);
+  if (!optInEvent && !optInMarketing) {
+    return { success: true, data: [] };
+  }
+
+  const { data, error } = await q;
+  if (error) return { success: false, error: error.message };
+
+  // Exclude contacts already in this event from the result entirely (per spec).
+  const enriched = await attachAlreadyInEventFlags(
+    supabase,
+    eventId,
+    (data ?? []) as PickableMasterContact[]
+  );
+  return { success: true, data: enriched.filter((c) => !c.isAlreadyInEvent) };
+}
+
+const addToEventChannel = z.enum(['email', 'sms', 'both']);
+const addToEventAddedBy = z.enum(['manual', 'event_copy']);
+
+export async function addMasterContactsToEvent(
+  eventId: string,
+  items: Array<{ masterContactId: string; addedBy: 'manual' | 'event_copy' }>,
+  invitationChannel: 'email' | 'sms' | 'both'
+): Promise<ActionResponse<{ added: number; alreadyInEvent: number }>> {
+  if (items.length === 0) {
+    return { success: false, error: 'No contacts selected.' };
+  }
+  const channelParse = addToEventChannel.safeParse(invitationChannel);
+  if (!channelParse.success) {
+    return { success: false, error: 'Invalid invitation channel.' };
+  }
+  for (const it of items) {
+    if (!addToEventAddedBy.safeParse(it.addedBy).success) {
+      return { success: false, error: 'Invalid added_by value.' };
+    }
+  }
+
+  const supabase = await createClient();
+
+  // Find which masters are already linked to this event.
+  const ids = Array.from(new Set(items.map((i) => i.masterContactId)));
+  const { data: linked } = await supabase
+    .from('contacts')
+    .select('master_contact_id')
+    .eq('event_id', eventId)
+    .in('master_contact_id', ids);
+  const linkedSet = new Set(
+    (linked ?? [])
+      .map((r) => r.master_contact_id as string | null)
+      .filter((x): x is string => x !== null)
+  );
+
+  const toLinkItems = items.filter((i) => !linkedSet.has(i.masterContactId));
+  const toLinkIds = toLinkItems.map((i) => i.masterContactId);
+  if (toLinkIds.length === 0) {
+    return { success: true, data: { added: 0, alreadyInEvent: items.length } };
+  }
+
+  // Look up master contact records to populate legacy contacts columns.
+  const { data: masters, error: masterErr } = await supabase
+    .from('master_contacts')
+    .select('id, first_name, last_name, email, phone')
+    .in('id', toLinkIds);
+  if (masterErr) return { success: false, error: masterErr.message };
+  const masterById = new Map(
+    (masters ?? []).map((m) => [m.id as string, m])
+  );
+
+  const joinRows = toLinkItems.flatMap((item) => {
+    const m = masterById.get(item.masterContactId);
+    if (!m) return [];
+    return [
+      {
+        event_id: eventId,
+        master_contact_id: item.masterContactId,
+        invitation_channel: invitationChannel as InvitationChannel,
+        added_by: item.addedBy,
+        first_name: (m.first_name as string) || '',
+        last_name: (m.last_name as string) || '',
+        email: (m.email as string) || '',
+        phone: (m.phone as string | null) ?? null,
+      },
+    ];
+  });
+
+  if (joinRows.length === 0) {
+    return { success: true, data: { added: 0, alreadyInEvent: linkedSet.size } };
+  }
+
+  const { error: insertErr } = await supabase.from('contacts').insert(joinRows);
+  if (insertErr) return { success: false, error: insertErr.message };
+
+  return {
+    success: true,
+    data: { added: joinRows.length, alreadyInEvent: linkedSet.size },
+  };
+}
