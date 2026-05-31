@@ -19,6 +19,7 @@
 | 1.8 | May 2026 | Destructive follow-up to the master contact transition: dropped legacy `contacts.first_name/last_name/email/phone/csv_source/imported_at`, locked `master_contact_id NOT NULL`. All event-scoped reads now embed `master_contacts!inner(…)`. Manual add/edit on the event contacts tab writes through the master (one contact, many events). Phone validation (`isValidPhone`) and normalization extended to every entry point — RSVP, paid checkout, walk-in, manual add — so ticket `attendee_phone` is also formatted on write. |
 | 1.9 | May 2026 | Optional YouTube video embed per event (`events.video_url`, nullable). Admins paste a `youtube.com/watch?v=…` or `youtu.be/…` URL in the wizard or edit form; the public event page renders a responsive 16:9 `<iframe>` between the description and tickets when the URL parses. |
 | 1.10 | May 2026 | Add Ticket flow (renamed from Walk-in). `tickets.payment_method` + `payment_note` columns. Admin records manual sales (Cash / Venmo / PayPal / Check / Other), comps, or reduced-price tickets and can deliver the ticket by email and/or SMS in the same submit. Master contact + per-event join row are synced via the shared helper with `source='manual'`. Attendees table gains a Payment column and archive event detail gains a Payment Breakdown card grouped by method. |
+| 1.11 | May 2026 | `events.hide_title_on_hero` column — per-event toggle to suppress the title text overlay on the public hero image (sr-only `h1` kept for SEO/a11y). Public hero now uses an aspect-ratio container so the 1200×400 cover doesn't get top/bottom-cropped on wide browsers. Refunded tickets stay visible on the attendees tab (dimmed row + destructive "Refunded" badge, check-in disabled, excluded from the expected counter). Admin dashboard replaced its total-stats cards with two per-event lists (Upcoming + Past) showing tickets sold and revenue per row. Bug fixes: event datetimes are now stored in UTC after explicit Mountain Time conversion (was being parsed as server-local UTC on Vercel, shifting the displayed time by ~6h); manual Add Ticket now sets `ticket_code` explicitly so it doesn't fall through to a stale UUID DB default. |
 
 ---
 
@@ -146,6 +147,7 @@ RLS must be enabled on all tables.
 | capacity | integer | max total attendees across all tiers |
 | is_published | boolean | default false |
 | cover_image_url | text | Supabase Storage URL |
+| hide_title_on_hero | boolean | default false; when true, the public event page hides the title text overlay (and its dark gradient) on the hero image — for covers that already include the event/band name. A screen-reader-only h1 is still rendered for accessibility and SEO. |
 | gallery_urls | text[] | up to 6 additional images |
 | host_bio | text | pre-fillable from settings default |
 | host_bio_headline | text | nullable; custom heading for host bio section on public page (e.g. "About the Band"); defaults to "About the Host" when null |
