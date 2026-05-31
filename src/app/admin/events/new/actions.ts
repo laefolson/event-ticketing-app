@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { stripe } from '@/lib/stripe';
+import { extractYouTubeId, YOUTUBE_URL_INVALID_MESSAGE } from '@/lib/youtube';
 import type { ActionResponse } from '@/types/actions';
 import type { EventType } from '@/types/database';
 
@@ -33,6 +34,7 @@ const createEventSchema = z
     gallery_urls: z.array(z.string().url()).optional(),
     save_the_date_image_url: z.string().url().nullable().optional(),
     save_the_date_text: z.string().max(2000).nullable().optional(),
+    video_url: z.string().max(500).nullable().optional(),
     faq: z.array(faqPairSchema).optional(),
     ticket_qr_enabled: z.boolean().optional().default(false),
     publish: z.boolean(),
@@ -45,6 +47,13 @@ const createEventSchema = z
         code: z.ZodIssueCode.custom,
         message: 'End date must be after start date',
         path: ['date_end'],
+      });
+    }
+    if (data.video_url && !extractYouTubeId(data.video_url)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: YOUTUBE_URL_INVALID_MESSAGE,
+        path: ['video_url'],
       });
     }
   });
@@ -64,6 +73,7 @@ export type CreateEventInput = {
   gallery_urls?: string[];
   save_the_date_image_url?: string | null;
   save_the_date_text?: string | null;
+  video_url?: string | null;
   faq?: Array<{ question: string; answer: string }>;
   ticket_qr_enabled?: boolean;
   publish: boolean;

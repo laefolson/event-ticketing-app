@@ -72,6 +72,7 @@ interface FormData {
   save_the_date_image_url: string | null;
   save_the_date_text: string;
   ticket_qr_enabled: boolean;
+  video_url: string;
   tiers: TierFormData[];
   faq: FaqPair[];
 }
@@ -136,6 +137,7 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
     save_the_date_image_url: null,
     save_the_date_text: '',
     ticket_qr_enabled: false,
+    video_url: '',
     tiers: [],
     faq: [],
   });
@@ -377,6 +379,7 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
       gallery_urls: formData.gallery_urls.length > 0 ? formData.gallery_urls : undefined,
       save_the_date_image_url: formData.save_the_date_image_url || null,
       save_the_date_text: formData.save_the_date_text.trim() || null,
+      video_url: formData.video_url.trim() || null,
       faq: formData.faq.length > 0
         ? formData.faq.map((p) => ({ question: p.question.trim(), answer: p.answer.trim() }))
         : undefined,
@@ -636,6 +639,20 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                   value={formData.host_bio}
                   onChange={(e) => updateField('host_bio', e.target.value)}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="video_url">Video URL</Label>
+                <Input
+                  id="video_url"
+                  type="url"
+                  placeholder="https://youtu.be/… or https://www.youtube.com/watch?v=…"
+                  value={formData.video_url}
+                  onChange={(e) => updateField('video_url', e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Optional — embeds a 16:9 YouTube player on the public event page.
+                </p>
               </div>
 
               <div className="space-y-2">

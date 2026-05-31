@@ -69,6 +69,7 @@ interface FormData {
   save_the_date_text: string;
   social_sharing_enabled: boolean;
   ticket_qr_enabled: boolean;
+  video_url: string;
 }
 
 interface EditEventFormProps {
@@ -95,6 +96,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
     save_the_date_text: event.save_the_date_text ?? '',
     social_sharing_enabled: event.social_sharing_enabled,
     ticket_qr_enabled: event.ticket_qr_enabled,
+    video_url: event.video_url ?? '',
   });
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
@@ -170,6 +172,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
       save_the_date_text: formData.save_the_date_text.trim() || null,
       social_sharing_enabled: formData.social_sharing_enabled,
       ticket_qr_enabled: formData.ticket_qr_enabled,
+      video_url: formData.video_url.trim() || null,
       publish,
     });
 
@@ -358,6 +361,20 @@ export function EditEventForm({ event }: EditEventFormProps) {
                 value={formData.host_bio}
                 onChange={(e) => updateField('host_bio', e.target.value)}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="video_url">Video URL</Label>
+              <Input
+                id="video_url"
+                type="url"
+                placeholder="https://youtu.be/… or https://www.youtube.com/watch?v=…"
+                value={formData.video_url}
+                onChange={(e) => updateField('video_url', e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional — embeds a 16:9 YouTube player on the public event page.
+              </p>
             </div>
 
             {/* Save the Date */}

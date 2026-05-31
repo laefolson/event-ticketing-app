@@ -148,6 +148,7 @@ RLS must be enabled on all tables.
 | host_bio_headline | text | nullable; custom heading for host bio section on public page (e.g. "About the Band"); defaults to "About the Host" when null |
 | save_the_date_image_url | text | nullable; optional image used in save-the-date emails |
 | save_the_date_text | text | nullable; optional custom body text for save-the-date messages |
+| video_url | text | nullable; optional YouTube URL (youtube.com/watch?v=… or youtu.be/…) rendered as a responsive 16:9 embed on the public event page |
 | faq | jsonb | array of `{question, answer}` |
 | status | enum | `draft \| published \| archived` |
 | social_sharing_enabled | boolean | default false; show/hide social share buttons on public page |
@@ -332,7 +333,7 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
 
 - Not search-indexed (`noindex` meta tag)
 - Returns 404 if `link_active = false`
-- Sections: hero (cover image, title, date, location), description, tier cards, map, host bio (heading from `host_bio_headline` or "About the Host"), FAQ accordion, social share buttons
+- Sections: hero (cover image, title, date, location), description, optional YouTube video embed (16:9, rendered only when `video_url` is set and parseable), tier cards, map, host bio (heading from `host_bio_headline` or "About the Host"), FAQ accordion, social share buttons
 - Tier cards show price, description, quantity remaining, and limit notice if `max_per_contact` is set
 - Sold out state when `quantity_sold = quantity_total`
 - Sticky footer CTA: "Get Tickets" or "RSVP Now"

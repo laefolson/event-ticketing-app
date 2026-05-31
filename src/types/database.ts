@@ -28,6 +28,7 @@ export interface Event {
   gallery_urls: string[];
   host_bio: string | null;
   host_bio_headline: string | null;
+  video_url: string | null;
   faq: Array<{ question: string; answer: string }>;
   save_the_date_image_url: string | null;
   save_the_date_text: string | null;

@@ -5,6 +5,7 @@ import Markdown from 'react-markdown';
 import { CalendarDays, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatPrice } from '@/lib/utils';
+import { extractYouTubeId } from '@/lib/youtube';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -169,6 +170,25 @@ export default async function EventPage({ params }: EventPageProps) {
             </div>
           </section>
         )}
+
+        {/* Video embed (responsive 16:9) */}
+        {(() => {
+          const videoId = extractYouTubeId(event.video_url);
+          if (!videoId) return null;
+          return (
+            <section className="border-b py-8">
+              <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
+                <iframe
+                  src={`https://www.youtube.com/embed/${videoId}`}
+                  title={`${event.title} video`}
+                  className="h-full w-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+            </section>
+          );
+        })()}
 
         {/* Ticket Tiers */}
         {tiers.length > 0 && (
