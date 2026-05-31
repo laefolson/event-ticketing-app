@@ -7,6 +7,7 @@ import { TicketConfirmationEmail } from '@/emails/ticket-confirmation-email';
 import { createServiceClient } from '@/lib/supabase/service';
 import { getVenueName } from '@/lib/settings';
 import { generateQrDataUrl } from '@/lib/qr';
+import { syncMasterContactFromCheckout } from '@/lib/checkout-master-sync';
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
       // Find all pending tickets for this session
       const { data: pendingTickets, error: fetchError } = await supabase
         .from('tickets')
-        .select('id, status, tier_id, quantity, attendee_name, attendee_email, event_id, ticket_code')
+        .select('id, status, tier_id, quantity, attendee_name, attendee_email, attendee_phone, event_id, ticket_code')
         .eq('stripe_session_id', sessionId)
         .eq('status', 'pending');
 
@@ -88,6 +89,34 @@ export async function POST(request: NextRequest) {
 
         if (tierError) {
           console.error(`checkout.session.completed: failed to increment quantity_sold for tier ${ticket.tier_id}:`, tierError.message);
+        }
+      }
+
+      // Sync master_contacts + create contacts join rows for the attendees on
+      // this session. Failures here are logged but do not block confirmation.
+      const smsOptInEvent = session.metadata?.sms_opt_in_event_updates === '1';
+      const smsOptInMarketing = session.metadata?.sms_opt_in_marketing === '1';
+      const seenEmails = new Set<string>();
+      for (const ticket of pendingTickets) {
+        const email = (ticket.attendee_email ?? '').trim().toLowerCase();
+        if (!email || seenEmails.has(email)) continue;
+        seenEmails.add(email);
+        try {
+          await syncMasterContactFromCheckout(supabase, {
+            eventId: ticket.event_id,
+            email,
+            name: ticket.attendee_name,
+            phone: ticket.attendee_phone,
+            smsOptInEvent,
+            smsOptInMarketing,
+            source: 'checkout',
+            addedBy: 'checkout',
+          });
+        } catch (err) {
+          console.error(
+            `checkout.session.completed: master sync failed for ${email}:`,
+            err instanceof Error ? err.message : err
+          );
         }
       }
 

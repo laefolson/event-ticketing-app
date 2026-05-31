@@ -206,7 +206,11 @@ export async function createCheckoutSession(
         mode: 'payment',
         customer_email: attendee_email,
         line_items: lineItems,
-        metadata: { event_id },
+        metadata: {
+          event_id,
+          sms_opt_in_event_updates: consent_event_updates ? '1' : '0',
+          sms_opt_in_marketing: consent_marketing ? '1' : '0',
+        },
         success_url: `${origin}/e/${slug}/confirm?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${origin}/e/${slug}`,
       });
@@ -286,31 +290,10 @@ export async function createCheckoutSession(
     redirectUrl = `${origin}/e/${slug}/confirm?session_id=${syntheticSessionId}`;
   }
 
-  // Create contact record if opted in to event updates
-  if (consent_event_updates) {
-    const nameParts = attendee_name.trim().split(/\s+/);
-    const firstName = nameParts[0] ?? null;
-    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
-
-    // Dedup by email
-    const { data: existingContact } = await serviceClient
-      .from('contacts')
-      .select('id')
-      .eq('event_id', event_id)
-      .eq('email', attendee_email)
-      .maybeSingle();
-
-    if (!existingContact) {
-      await serviceClient.from('contacts').insert({
-        event_id,
-        first_name: firstName,
-        last_name: lastName,
-        email: attendee_email,
-        phone: attendee_phone,
-        invitation_channel: 'none',
-      });
-    }
-  }
+  // Contact rows used to be created here for opted-in buyers. As of v1.7 the
+  // master sync runs in the Stripe webhook (checkout.session.completed) and
+  // unconditionally upserts the master_contact + creates the contacts join
+  // row with normalized phone and the proper invitation channel.
 
   // Record SMS consents if phone provided and at least one consent is true
   if (attendee_phone && (consent_event_updates || consent_marketing)) {

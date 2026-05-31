@@ -8,6 +8,7 @@ import { sendEmail } from '@/lib/resend';
 import { RsvpConfirmationEmail } from '@/emails/rsvp-confirmation-email';
 import { getVenueName } from '@/lib/settings';
 import { generateTicketCode, formatDate } from '@/lib/utils';
+import { syncMasterContactFromCheckout } from '@/lib/checkout-master-sync';
 import type { ActionResponse } from '@/types/actions';
 
 const rsvpSchema = z.object({
@@ -222,6 +223,28 @@ export async function submitRsvp(
     }
 
     await serviceClient.from('sms_consents').insert(consentRecords);
+  }
+
+  // Sync master_contacts + create contacts join row. Best-effort: failures
+  // here are logged but never fail the RSVP from the guest's perspective.
+  if (attendee_email) {
+    try {
+      await syncMasterContactFromCheckout(serviceClient, {
+        eventId: event_id,
+        email: attendee_email,
+        name: attendee_name,
+        phone: attendee_phone,
+        smsOptInEvent: consent_event_updates,
+        smsOptInMarketing: consent_marketing,
+        source: 'rsvp',
+        addedBy: 'rsvp',
+      });
+    } catch (err) {
+      console.error(
+        `RSVP master sync failed for ${attendee_email}:`,
+        err instanceof Error ? err.message : err
+      );
+    }
   }
 
   return { success: true, data: { ticketId: ticket.id } };
