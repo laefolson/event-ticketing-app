@@ -122,7 +122,6 @@ export default async function EventPage({ params }: EventPageProps) {
                 <h1 className="text-3xl font-bold text-white sm:text-4xl md:text-5xl">
                   {event.title}
                 </h1>
-                <p className="mt-2 text-lg font-medium text-white/90">{priceRange}</p>
               </div>
             </div>
           </div>
@@ -130,7 +129,6 @@ export default async function EventPage({ params }: EventPageProps) {
           <div className="bg-muted px-6 py-12 sm:px-8 sm:py-16">
             <div className="mx-auto max-w-3xl">
               <h1 className="text-3xl font-bold sm:text-4xl md:text-5xl">{event.title}</h1>
-              <p className="text-muted-foreground mt-2 text-lg font-medium">{priceRange}</p>
             </div>
           </div>
         )}
@@ -161,34 +159,23 @@ export default async function EventPage({ params }: EventPageProps) {
           )}
         </section>
 
-        {/* Description */}
-        {event.description && (
+        {/* Event Details */}
+        {(event.description || tiers.length > 0) && (
           <section className="border-b py-8">
             <h2 className="mb-4 text-xl font-semibold">Event Details</h2>
-            <div className="prose prose-stone dark:prose-invert max-w-none text-muted-foreground leading-relaxed">
-              <Markdown>{event.description}</Markdown>
-            </div>
+            {tiers.length > 0 && (
+              <p className="mb-4 text-base">
+                <span className="text-muted-foreground">Tickets:</span>{' '}
+                <span className="font-semibold">{priceRange}</span>
+              </p>
+            )}
+            {event.description && (
+              <div className="prose prose-stone dark:prose-invert max-w-none text-muted-foreground leading-relaxed">
+                <Markdown>{event.description}</Markdown>
+              </div>
+            )}
           </section>
         )}
-
-        {/* Video embed (responsive 16:9) */}
-        {(() => {
-          const videoId = extractYouTubeId(event.video_url);
-          if (!videoId) return null;
-          return (
-            <section className="border-b py-8">
-              <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
-                <iframe
-                  src={`https://www.youtube.com/embed/${videoId}`}
-                  title={`${event.title} video`}
-                  className="h-full w-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                />
-              </div>
-            </section>
-          );
-        })()}
 
         {/* Ticket Tiers */}
         {tiers.length > 0 && (
@@ -199,8 +186,14 @@ export default async function EventPage({ params }: EventPageProps) {
                 const soldOut = tier.quantity_sold >= tier.quantity_total;
                 const remaining = tier.quantity_total - tier.quantity_sold;
 
-                return (
-                  <Card key={tier.id} className={soldOut ? 'opacity-60' : undefined}>
+                const cardInner = (
+                  <Card
+                    className={
+                      soldOut
+                        ? 'opacity-60'
+                        : 'transition-shadow hover:shadow-md focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
+                    }
+                  >
                     <CardContent className="pt-6">
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="font-semibold">{tier.name}</h3>
@@ -216,15 +209,27 @@ export default async function EventPage({ params }: EventPageProps) {
                         <p className="text-muted-foreground mt-2 text-sm">{tier.description}</p>
                       )}
                       <div className="text-muted-foreground mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                        {!soldOut && (
-                          <span>{remaining} remaining</span>
-                        )}
+                        {!soldOut && <span>{remaining} remaining</span>}
                         {tier.max_per_contact !== null && (
                           <span>Max {tier.max_per_contact} per person</span>
                         )}
                       </div>
                     </CardContent>
                   </Card>
+                );
+
+                if (soldOut) {
+                  return <div key={tier.id}>{cardInner}</div>;
+                }
+                return (
+                  <Link
+                    key={tier.id}
+                    href={ctaHref}
+                    className="block rounded-lg focus:outline-none"
+                    aria-label={`Get ${tier.name} — ${formatPrice(tier.price_cents)}`}
+                  >
+                    {cardInner}
+                  </Link>
                 );
               })}
             </div>
@@ -248,6 +253,25 @@ export default async function EventPage({ params }: EventPageProps) {
             </div>
           </section>
         )}
+
+        {/* Video embed (responsive 16:9) — appears below the gallery */}
+        {(() => {
+          const videoId = extractYouTubeId(event.video_url);
+          if (!videoId) return null;
+          return (
+            <section className="border-b py-8">
+              <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
+                <iframe
+                  src={`https://www.youtube.com/embed/${videoId}`}
+                  title={`${event.title} video`}
+                  className="h-full w-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+            </section>
+          );
+        })()}
 
         {/* Location / Map */}
         {event.location_address && process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && (
