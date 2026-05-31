@@ -126,11 +126,13 @@ export function AttendeesManager({
   // Per-row check-in pending state
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
 
-  // Counter — uses quantity, not row count
+  // Counter — uses quantity, not row count. Refunded tickets stay visible
+  // in the list but don't count toward expected attendance.
   const { checkedInCount, expectedCount } = useMemo(() => {
     let checkedIn = 0;
     let expected = 0;
     for (const ticket of tickets) {
+      if (ticket.status === 'refunded') continue;
       expected += ticket.quantity;
       if (ticket.status === 'checked_in') {
         checkedIn += ticket.quantity;
@@ -185,7 +187,7 @@ export function AttendeesManager({
       formatPrice(t.amount_paid_cents),
       escapeCsvValue(paymentMethodLabel(t.payment_method)),
       escapeCsvValue(t.payment_note ?? ''),
-      t.status === 'checked_in' ? 'Checked In' : 'Confirmed',
+      t.status === 'checked_in' ? 'Checked In' : t.status === 'refunded' ? 'Refunded' : 'Confirmed',
       formatDate(t.purchased_at, 'yyyy-MM-dd'),
       hasConsent(t.attendee_phone, eventOptInPhones) ? 'Yes' : 'No',
       hasConsent(t.attendee_phone, marketingOptInPhones) ? 'Yes' : 'No',
@@ -420,10 +422,11 @@ export function AttendeesManager({
                 ) : (
                   filteredTickets.map((ticket) => {
                     const isCheckedIn = ticket.status === 'checked_in';
+                    const isRefunded = ticket.status === 'refunded';
                     const isRowPending = pendingIds.has(ticket.id);
 
                     return (
-                      <TableRow key={ticket.id}>
+                      <TableRow key={ticket.id} className={isRefunded ? 'opacity-60' : undefined}>
                         <TableCell className="font-medium">
                           {ticket.attendee_name}
                         </TableCell>
@@ -475,34 +478,42 @@ export function AttendeesManager({
                         </TableCell>
                         <TableCell>
                           <Badge
-                            variant={isCheckedIn ? 'default' : 'secondary'}
+                            variant={
+                              isRefunded ? 'destructive'
+                                : isCheckedIn ? 'default'
+                                  : 'secondary'
+                            }
                           >
-                            {isCheckedIn ? 'Checked In' : 'Confirmed'}
+                            {isRefunded ? 'Refunded' : isCheckedIn ? 'Checked In' : 'Confirmed'}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant={isCheckedIn ? 'ghost' : 'default'}
-                            size="sm"
-                            disabled={isRowPending}
-                            onClick={() =>
-                              handleToggle(ticket.id, ticket.status)
-                            }
-                          >
-                            {isRowPending ? (
-                              '…'
-                            ) : isCheckedIn ? (
-                              <>
-                                <Undo2 className="mr-1 h-3.5 w-3.5" />
-                                Undo
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                                Check In
-                              </>
-                            )}
-                          </Button>
+                          {isRefunded ? (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          ) : (
+                            <Button
+                              variant={isCheckedIn ? 'ghost' : 'default'}
+                              size="sm"
+                              disabled={isRowPending}
+                              onClick={() =>
+                                handleToggle(ticket.id, ticket.status)
+                              }
+                            >
+                              {isRowPending ? (
+                                '…'
+                              ) : isCheckedIn ? (
+                                <>
+                                  <Undo2 className="mr-1 h-3.5 w-3.5" />
+                                  Undo
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                                  Check In
+                                </>
+                              )}
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     );

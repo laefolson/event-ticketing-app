@@ -28,7 +28,7 @@ export default async function AttendeesPage({ params }: AttendeesPageProps) {
     .from('tickets')
     .select('*, ticket_tiers(id, name, price_cents)')
     .eq('event_id', id)
-    .in('status', ['confirmed', 'checked_in'])
+    .in('status', ['confirmed', 'checked_in', 'refunded'])
     .order('purchased_at', { ascending: false });
 
   const { data: tiers } = await supabase
