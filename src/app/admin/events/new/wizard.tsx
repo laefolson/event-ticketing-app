@@ -13,7 +13,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { TimeInput } from '@/components/ui/time-input';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -529,11 +529,10 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                 <Label htmlFor="event_date">
                   Event Date <span className="text-destructive">*</span>
                 </Label>
-                <Input
+                <DatePicker
                   id="event_date"
-                  type="date"
                   value={formData.event_date}
-                  onChange={(e) => updateField('event_date', e.target.value)}
+                  onChange={(val) => updateField('event_date', val)}
                 />
               </div>
 
@@ -542,10 +541,11 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                   <Label htmlFor="time_start">
                     Start Time <span className="text-destructive">*</span>
                   </Label>
-                  <TimeInput
+                  <Input
                     id="time_start"
+                    type="time"
                     value={formData.time_start}
-                    onChange={(val) => updateField('time_start', val)}
+                    onChange={(e) => updateField('time_start', e.target.value)}
                   />
                 </div>
 
@@ -553,10 +553,11 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                   <Label htmlFor="time_end">
                     End Time <span className="text-destructive">*</span>
                   </Label>
-                  <TimeInput
+                  <Input
                     id="time_end"
+                    type="time"
                     value={formData.time_end}
-                    onChange={(val) => updateField('time_end', val)}
+                    onChange={(e) => updateField('time_end', e.target.value)}
                   />
                 </div>
               </div>
