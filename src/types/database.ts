@@ -57,15 +57,7 @@ export interface TicketTier {
 export interface Contact {
   id: string;
   event_id: string;
-  // Legacy columns retained until the destructive follow-up migration drops them.
-  first_name: string | null;
-  last_name: string | null;
-  email: string | null;
-  phone: string | null;
-  csv_source: string | null;
-  imported_at: string;
-  // Join-table columns added by migration 20260530100000.
-  master_contact_id: string | null;
+  master_contact_id: string;
   invitation_channel: InvitationChannel;
   added_by: ContactAddedBy | null;
   invited_at: string | null;
@@ -86,6 +78,20 @@ export interface MasterContact {
   notes: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Contact row with the linked master_contacts embedded.
+ * Returned by queries that use Supabase's foreign-key embed:
+ *   .select('*, master_contacts!inner(first_name, last_name, email, phone, sms_opt_in_event_updates, sms_opt_in_marketing)')
+ * Once the destructive migration drops the legacy contacts columns, this
+ * embed becomes the only way to read name/email/phone from a contacts row.
+ */
+export interface ContactWithMaster extends Contact {
+  master_contacts: Pick<
+    MasterContact,
+    'first_name' | 'last_name' | 'email' | 'phone' | 'sms_opt_in_event_updates' | 'sms_opt_in_marketing'
+  >;
 }
 
 export interface Ticket {

@@ -55,12 +55,12 @@ import {
   bulkUpdateContactChannel,
 } from './actions';
 import type { ContactInput, CsvRow, ImportResult, InvitationScope, InvitationResult, SaveTheDateScope, SaveTheDateResult } from './actions';
-import type { Contact, CsvImport, InvitationChannel } from '@/types/database';
+import type { ContactWithMaster, CsvImport, InvitationChannel } from '@/types/database';
 import { formatDate } from '@/lib/utils';
 import { AddFromMasterSheet } from './add-from-master-sheet';
 
 interface ContactsManagerProps {
-  contacts: Contact[];
+  contacts: ContactWithMaster[];
   csvImports: CsvImport[];
   eventId: string;
   priorEvents: { id: string; title: string }[];
@@ -145,7 +145,7 @@ export function ContactsManager({
 
   // Contact dialog state
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
-  const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [editingContact, setEditingContact] = useState<ContactWithMaster | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -191,13 +191,15 @@ export function ContactsManager({
 
     if (search.trim()) {
       const q = search.toLowerCase();
-      result = result.filter(
-        (c) =>
-          (c.first_name && c.first_name.toLowerCase().includes(q)) ||
-          (c.last_name && c.last_name.toLowerCase().includes(q)) ||
-          (c.email && c.email.toLowerCase().includes(q)) ||
-          (c.phone && c.phone.includes(q))
-      );
+      result = result.filter((c) => {
+        const m = c.master_contacts;
+        return (
+          m.first_name.toLowerCase().includes(q) ||
+          m.last_name.toLowerCase().includes(q) ||
+          m.email.toLowerCase().includes(q) ||
+          (m.phone !== null && m.phone.includes(q))
+        );
+      });
     }
 
     return result;
@@ -211,13 +213,13 @@ export function ContactsManager({
     setContactDialogOpen(true);
   }
 
-  function openEdit(contact: Contact) {
+  function openEdit(contact: ContactWithMaster) {
     setEditingContact(contact);
     setForm({
-      first_name: contact.first_name ?? '',
-      last_name: contact.last_name ?? '',
-      email: contact.email ?? '',
-      phone: contact.phone ?? '',
+      first_name: contact.master_contacts.first_name,
+      last_name: contact.master_contacts.last_name,
+      email: contact.master_contacts.email,
+      phone: contact.master_contacts.phone ?? '',
       invitation_channel: contact.invitation_channel,
     });
     setError(null);
@@ -231,7 +233,7 @@ export function ContactsManager({
     const input: ContactInput = {
       first_name: form.first_name,
       last_name: form.last_name,
-      email: form.email || null,
+      email: form.email,
       phone: form.phone || null,
       invitation_channel: form.invitation_channel,
     };
@@ -368,7 +370,7 @@ export function ContactsManager({
 
   // Invitation handlers
   const inviteCounts = useMemo(() => {
-    let targetContacts: Contact[];
+    let targetContacts: ContactWithMaster[];
     if (inviteScope === 'all') {
       targetContacts = contacts.filter((c) => c.invitation_channel !== 'none');
     } else if (inviteScope === 'uninvited') {
@@ -376,8 +378,8 @@ export function ContactsManager({
     } else {
       targetContacts = contacts.filter((c) => selectedContactIds.has(c.id) && c.invitation_channel !== 'none');
     }
-    const emailCount = targetContacts.filter((c) => (c.invitation_channel === 'email' || c.invitation_channel === 'both') && c.email).length;
-    const smsCount = targetContacts.filter((c) => (c.invitation_channel === 'sms' || c.invitation_channel === 'both') && c.phone).length;
+    const emailCount = targetContacts.filter((c) => (c.invitation_channel === 'email' || c.invitation_channel === 'both') && c.master_contacts.email).length;
+    const smsCount = targetContacts.filter((c) => (c.invitation_channel === 'sms' || c.invitation_channel === 'both') && c.master_contacts.phone).length;
     return { total: targetContacts.length, emailCount, smsCount };
   }, [contacts, inviteScope, selectedContactIds]);
 
@@ -412,7 +414,7 @@ export function ContactsManager({
 
   // Save the Date handlers
   const stdCounts = useMemo(() => {
-    let targetContacts: Contact[];
+    let targetContacts: ContactWithMaster[];
     if (stdScope === 'all') {
       targetContacts = contacts.filter((c) => c.invitation_channel !== 'none');
     } else if (stdScope === 'uninvited') {
@@ -420,8 +422,8 @@ export function ContactsManager({
     } else {
       targetContacts = contacts.filter((c) => selectedContactIds.has(c.id) && c.invitation_channel !== 'none');
     }
-    const emailCount = targetContacts.filter((c) => (c.invitation_channel === 'email' || c.invitation_channel === 'both') && c.email).length;
-    const smsCount = targetContacts.filter((c) => (c.invitation_channel === 'sms' || c.invitation_channel === 'both') && c.phone).length;
+    const emailCount = targetContacts.filter((c) => (c.invitation_channel === 'email' || c.invitation_channel === 'both') && c.master_contacts.email).length;
+    const smsCount = targetContacts.filter((c) => (c.invitation_channel === 'sms' || c.invitation_channel === 'both') && c.master_contacts.phone).length;
     return { total: targetContacts.length, emailCount, smsCount };
   }, [contacts, stdScope, selectedContactIds]);
 
@@ -641,10 +643,10 @@ export function ContactsManager({
                         />
                       </TableCell>
                       <TableCell className="font-medium">
-                        {contact.first_name} {contact.last_name}
+                        {contact.master_contacts.first_name} {contact.master_contacts.last_name}
                       </TableCell>
-                      <TableCell>{contact.email ?? '—'}</TableCell>
-                      <TableCell>{contact.phone ?? '—'}</TableCell>
+                      <TableCell>{contact.master_contacts.email}</TableCell>
+                      <TableCell>{contact.master_contacts.phone ?? '—'}</TableCell>
                       <TableCell>
                         <Badge variant={channelVariant(contact.invitation_channel)}>
                           {channelLabel(contact.invitation_channel)}
@@ -769,6 +771,7 @@ export function ContactsManager({
               <Input
                 id="contact-email"
                 type="email"
+                required
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="jane@example.com"

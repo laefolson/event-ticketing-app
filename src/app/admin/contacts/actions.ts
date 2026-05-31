@@ -10,13 +10,19 @@ import {
   type MasterCsvRow,
 } from '@/lib/master-contacts-import';
 import { fetchPublicSheet } from '@/lib/google-sheets';
-import { normalizePhone } from '@/lib/phone';
+import { normalizePhone, isValidPhone, PHONE_VALIDATION_MESSAGE } from '@/lib/phone';
 
 const contactInputSchema = z.object({
   first_name: z.string().trim().min(1, 'First name is required').max(120),
   last_name: z.string().trim().max(120).default(''),
   email: z.string().trim().toLowerCase().email('Valid email is required'),
-  phone: z.string().trim().max(40).optional().or(z.literal('')),
+  phone: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .or(z.literal(''))
+    .refine((v) => !v || isValidPhone(v), PHONE_VALIDATION_MESSAGE),
   sms_opt_in_event_updates: z.boolean().optional().default(false),
   sms_opt_in_marketing: z.boolean().optional().default(false),
   email_opt_out: z.boolean().optional().default(false),

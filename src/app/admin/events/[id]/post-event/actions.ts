@@ -43,7 +43,10 @@ async function resolveRecipients(
     .from('tickets')
     .select(
       `id, contact_id, attendee_name, attendee_email, attendee_phone,
-       contacts ( id, first_name, last_name, email, phone, invitation_channel )`
+       contacts (
+         id, invitation_channel,
+         master_contacts!inner ( first_name, last_name, email, phone )
+       )`
     )
     .eq('event_id', eventId)
     .in('status', ['confirmed', 'checked_in']);
@@ -61,32 +64,40 @@ async function resolveRecipients(
       const ch = contact.invitation_channel as InvitationChannel;
       if (ch === 'none') continue;
 
-      const name = [contact.first_name, contact.last_name]
+      const master = Array.isArray(contact.master_contacts)
+        ? contact.master_contacts[0]
+        : contact.master_contacts;
+      const first_name = master?.first_name ?? '';
+      const last_name = master?.last_name ?? '';
+      const email = master?.email ?? null;
+      const phone = master?.phone ?? null;
+
+      const name = [first_name, last_name]
         .filter(Boolean)
         .join(' ') || 'Guest';
 
       // Send to each channel matching the contact's invitation_channel
-      if ((ch === 'email' || ch === 'both') && contact.email) {
+      if ((ch === 'email' || ch === 'both') && email) {
         const key = `contact:${contact.id}:email`;
         if (!seen.has(key)) {
           seen.set(key, {
             contactId: contact.id,
             name,
-            email: contact.email,
-            phone: contact.phone,
+            email,
+            phone,
             channel: 'email',
           });
         }
       }
 
-      if ((ch === 'sms' || ch === 'both') && contact.phone) {
+      if ((ch === 'sms' || ch === 'both') && phone) {
         const key = `contact:${contact.id}:sms`;
         if (!seen.has(key)) {
           seen.set(key, {
             contactId: contact.id,
             name,
-            email: contact.email,
-            phone: contact.phone,
+            email,
+            phone,
             channel: 'sms',
           });
         }

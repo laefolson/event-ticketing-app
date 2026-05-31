@@ -25,9 +25,15 @@ export default async function ContactsPage({ params }: ContactsPageProps) {
 
   const { data: contacts } = await supabase
     .from('contacts')
-    .select('*')
+    .select(
+      `*,
+       master_contacts!inner(
+         first_name, last_name, email, phone,
+         sms_opt_in_event_updates, sms_opt_in_marketing
+       )`
+    )
     .eq('event_id', id)
-    .order('imported_at', { ascending: false });
+    .order('created_at', { ascending: false });
 
   const { data: csvImports } = await supabase
     .from('csv_imports')

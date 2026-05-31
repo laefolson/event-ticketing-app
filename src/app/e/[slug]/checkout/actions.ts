@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
+import { isValidPhone, normalizePhone, PHONE_VALIDATION_MESSAGE } from '@/lib/phone';
 import { stripe } from '@/lib/stripe';
 import { sendEmail } from '@/lib/resend';
 import { RsvpConfirmationEmail } from '@/emails/rsvp-confirmation-email';
@@ -27,6 +28,7 @@ const checkoutSchema = z.object({
   attendee_phone: z
     .string()
     .max(30, 'Phone number too long')
+    .refine((v) => isValidPhone(v), PHONE_VALIDATION_MESSAGE)
     .transform((v) => v || null),
   consent_event_updates: z.boolean(),
   consent_marketing: z.boolean(),
@@ -49,10 +51,13 @@ export async function createCheckoutSession(
     items: rawItems,
     attendee_name,
     attendee_email,
-    attendee_phone,
+    attendee_phone: rawAttendeePhone,
     consent_event_updates,
     consent_marketing,
   } = parsed.data;
+  // Normalize once so the pending ticket, sms_consents row, and the
+  // webhook's master sync all see the same canonical (xxx) xxx-xxxx value.
+  const attendee_phone = normalizePhone(rawAttendeePhone);
 
   // Filter to items with qty > 0
   const items = rawItems.filter((i) => i.quantity > 0);

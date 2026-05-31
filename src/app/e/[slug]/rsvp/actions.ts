@@ -9,6 +9,7 @@ import { RsvpConfirmationEmail } from '@/emails/rsvp-confirmation-email';
 import { getVenueName } from '@/lib/settings';
 import { generateTicketCode, formatDate } from '@/lib/utils';
 import { syncMasterContactFromCheckout } from '@/lib/checkout-master-sync';
+import { isValidPhone, normalizePhone, PHONE_VALIDATION_MESSAGE } from '@/lib/phone';
 import type { ActionResponse } from '@/types/actions';
 
 const rsvpSchema = z.object({
@@ -23,6 +24,7 @@ const rsvpSchema = z.object({
   attendee_phone: z
     .string()
     .max(30, 'Phone number too long')
+    .refine((v) => isValidPhone(v), PHONE_VALIDATION_MESSAGE)
     .transform((v) => v || null),
   quantity: z.number().int().min(1, 'Quantity must be at least 1'),
   consent_event_updates: z.boolean(),
@@ -46,11 +48,14 @@ export async function submitRsvp(
     tier_id,
     attendee_name,
     attendee_email,
-    attendee_phone,
+    attendee_phone: rawAttendeePhone,
     quantity,
     consent_event_updates,
     consent_marketing,
   } = parsed.data;
+  // Normalize once so the ticket, sms_consents row, and master sync all
+  // store the same canonical (xxx) xxx-xxxx for US numbers.
+  const attendee_phone = normalizePhone(rawAttendeePhone);
 
   const supabase = await createClient();
 

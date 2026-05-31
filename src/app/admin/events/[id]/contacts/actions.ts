@@ -11,29 +11,22 @@ import type { ActionResponse } from '@/types/actions';
 import { getVenueName } from '@/lib/settings';
 import type { InvitationChannel } from '@/types/database';
 import { processMasterContactsCsv } from '@/lib/master-contacts-import';
-import { normalizePhone } from '@/lib/phone';
+import { normalizePhone, isValidPhone, PHONE_VALIDATION_MESSAGE } from '@/lib/phone';
 
 const channelEnum = z.enum(['email', 'sms', 'both', 'none']);
 
-const contactSchema = z
-  .object({
-    first_name: z.string().min(1, 'First name is required').max(200),
-    last_name: z.string().min(1, 'Last name is required').max(200),
-    email: z
-      .string()
-      .email('Invalid email address')
-      .nullable()
-      .transform((v) => v || null),
-    phone: z
-      .string()
-      .max(30, 'Phone number too long')
-      .nullable()
-      .transform((v) => v || null),
-    invitation_channel: channelEnum,
-  })
-  .refine((data) => data.email || data.phone, {
-    message: 'At least one of email or phone is required',
-  });
+const contactSchema = z.object({
+  first_name: z.string().min(1, 'First name is required').max(200),
+  last_name: z.string().min(1, 'Last name is required').max(200),
+  email: z.string().email('Valid email is required').trim().toLowerCase(),
+  phone: z
+    .string()
+    .max(30, 'Phone number too long')
+    .nullable()
+    .refine((v) => isValidPhone(v), PHONE_VALIDATION_MESSAGE)
+    .transform((v) => v || null),
+  invitation_channel: channelEnum,
+});
 
 export type ContactInput = z.infer<typeof contactSchema>;
 
@@ -83,46 +76,68 @@ export async function createContact(
     data: { user },
     error: authError,
   } = await supabase.auth.getUser();
-
   if (authError || !user) {
     return { success: false, error: 'You must be logged in.' };
   }
 
-  // Dedup check
-  if (parsed.data.email) {
-    const { data: existing } = await supabase
-      .from('contacts')
-      .select('id')
-      .eq('event_id', eventId)
-      .ilike('email', parsed.data.email)
-      .limit(1);
+  const { first_name, last_name, email, phone, invitation_channel } = parsed.data;
+  const normalizedPhone = normalizePhone(phone);
 
-    if (existing && existing.length > 0) {
-      return { success: false, error: 'A contact with this email already exists for this event.' };
-    }
-  } else if (parsed.data.phone) {
-    const { data: existing } = await supabase
-      .from('contacts')
-      .select('id')
-      .eq('event_id', eventId)
-      .eq('phone', parsed.data.phone)
-      .limit(1);
+  // Upsert into master_contacts by email.
+  const { data: existingMaster } = await supabase
+    .from('master_contacts')
+    .select('id, first_name, last_name, phone')
+    .eq('email', email)
+    .maybeSingle();
 
-    if (existing && existing.length > 0) {
-      return { success: false, error: 'A contact with this phone number already exists for this event.' };
+  let masterContactId: string;
+  if (existingMaster) {
+    const fields: Record<string, unknown> = {};
+    if (!existingMaster.first_name && first_name) fields.first_name = first_name;
+    if (!existingMaster.last_name && last_name) fields.last_name = last_name;
+    if (normalizedPhone && normalizedPhone !== existingMaster.phone) fields.phone = normalizedPhone;
+    if (Object.keys(fields).length > 0) {
+      const { error: updateErr } = await supabase
+        .from('master_contacts')
+        .update(fields)
+        .eq('id', existingMaster.id);
+      if (updateErr) return { success: false, error: updateErr.message };
     }
+    masterContactId = existingMaster.id as string;
+  } else {
+    const { data: inserted, error: insertErr } = await supabase
+      .from('master_contacts')
+      .insert({
+        first_name,
+        last_name,
+        email,
+        phone: normalizedPhone,
+        source: 'manual',
+      })
+      .select('id')
+      .single();
+    if (insertErr) return { success: false, error: insertErr.message };
+    masterContactId = inserted.id as string;
+  }
+
+  // Check whether this master is already linked to this event.
+  const { data: existingJoin } = await supabase
+    .from('contacts')
+    .select('id')
+    .eq('event_id', eventId)
+    .eq('master_contact_id', masterContactId)
+    .maybeSingle();
+  if (existingJoin) {
+    return { success: false, error: 'This contact is already in this event.' };
   }
 
   const { data, error } = await supabase
     .from('contacts')
     .insert({
       event_id: eventId,
-      first_name: parsed.data.first_name,
-      last_name: parsed.data.last_name,
-      email: parsed.data.email,
-      phone: parsed.data.phone,
-      invitation_channel: parsed.data.invitation_channel,
-      csv_source: null,
+      master_contact_id: masterContactId,
+      invitation_channel,
+      added_by: 'manual',
     })
     .select('id')
     .single();
@@ -150,63 +165,46 @@ export async function updateContact(
     data: { user },
     error: authError,
   } = await supabase.auth.getUser();
-
   if (authError || !user) {
     return { success: false, error: 'You must be logged in.' };
   }
 
-  // Fetch existing contact for event_id
+  // Fetch the contacts row for its master_contact_id.
   const { data: existing, error: fetchError } = await supabase
     .from('contacts')
-    .select('id, event_id')
+    .select('id, master_contact_id')
     .eq('id', contactId)
     .single();
-
-  if (fetchError || !existing) {
+  if (fetchError || !existing || !existing.master_contact_id) {
     return { success: false, error: 'Contact not found.' };
   }
 
-  // Dedup check excluding self
-  if (parsed.data.email) {
-    const { data: dupe } = await supabase
-      .from('contacts')
-      .select('id')
-      .eq('event_id', existing.event_id)
-      .ilike('email', parsed.data.email)
-      .neq('id', contactId)
-      .limit(1);
+  const { first_name, last_name, email, phone, invitation_channel } = parsed.data;
+  const normalizedPhone = normalizePhone(phone);
 
-    if (dupe && dupe.length > 0) {
-      return { success: false, error: 'A contact with this email already exists for this event.' };
-    }
-  } else if (parsed.data.phone) {
-    const { data: dupe } = await supabase
-      .from('contacts')
-      .select('id')
-      .eq('event_id', existing.event_id)
-      .eq('phone', parsed.data.phone)
-      .neq('id', contactId)
-      .limit(1);
-
-    if (dupe && dupe.length > 0) {
-      return { success: false, error: 'A contact with this phone number already exists for this event.' };
-    }
-  }
-
-  const { error } = await supabase
-    .from('contacts')
+  // Update master_contacts — note this affects every event the contact is in.
+  const { error: masterErr } = await supabase
+    .from('master_contacts')
     .update({
-      first_name: parsed.data.first_name,
-      last_name: parsed.data.last_name,
-      email: parsed.data.email,
-      phone: parsed.data.phone,
-      invitation_channel: parsed.data.invitation_channel,
+      first_name,
+      last_name,
+      email,
+      phone: normalizedPhone,
     })
-    .eq('id', contactId);
-
-  if (error) {
-    return { success: false, error: error.message };
+    .eq('id', existing.master_contact_id);
+  if (masterErr) {
+    if (masterErr.code === '23505') {
+      return { success: false, error: 'Another contact already uses that email.' };
+    }
+    return { success: false, error: masterErr.message };
   }
+
+  // Update the per-event invitation channel.
+  const { error: channelErr } = await supabase
+    .from('contacts')
+    .update({ invitation_channel })
+    .eq('id', contactId);
+  if (channelErr) return { success: false, error: channelErr.message };
 
   return { success: true, data: { contactId } };
 }
@@ -309,18 +307,11 @@ export async function importContacts(
   );
 
   // Step 3: build contacts join rows for masters not yet linked to this event.
-  // Legacy first_name/last_name/email/phone/csv_source columns are also populated
-  // during the transition until the destructive migration drops them.
   interface JoinRow {
     event_id: string;
     master_contact_id: string;
     invitation_channel: InvitationChannel;
     added_by: 'csv_import';
-    csv_source: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    phone: string | null;
   }
   const joinRows: JoinRow[] = [];
   const seenMasterIds = new Set<string>();
@@ -340,11 +331,6 @@ export async function importContacts(
       master_contact_id: masterId,
       invitation_channel: r.invitation_channel ?? defaultChannel(email, phone),
       added_by: 'csv_import',
-      csv_source: filename,
-      first_name: (r.first_name ?? '').trim(),
-      last_name: (r.last_name ?? '').trim(),
-      email,
-      phone,
     });
   }
 
@@ -519,10 +505,14 @@ export async function sendInvitations(
     return { success: false, error: 'Event not found.' };
   }
 
-  // Build contacts query based on scope
+  // Build contacts query based on scope. Reads name/email/phone via the
+  // master_contacts join so we stop depending on legacy contacts columns.
   let query = supabase
     .from('contacts')
-    .select('id, first_name, last_name, email, phone, invitation_channel')
+    .select(
+      `id, invitation_channel,
+       master_contacts!inner(first_name, last_name, email, phone)`
+    )
     .eq('event_id', eventId)
     .neq('invitation_channel', 'none');
 
@@ -557,14 +547,24 @@ export async function sendInvitations(
   const failedDetails: string[] = [];
 
   for (const contact of contacts) {
-    const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Guest';
-    const firstName = contact.first_name || 'Guest';
+    // Supabase typegen returns the embed as an object for a many-to-one FK,
+    // but the inferred type is sometimes a single-element array. Normalize.
+    const master = Array.isArray(contact.master_contacts)
+      ? contact.master_contacts[0]
+      : contact.master_contacts;
+    const first_name = master?.first_name ?? '';
+    const last_name = master?.last_name ?? '';
+    const email = master?.email ?? null;
+    const phone = master?.phone ?? null;
+
+    const name = [first_name, last_name].filter(Boolean).join(' ') || 'Guest';
+    const firstName = first_name || 'Guest';
     const channel = contact.invitation_channel as InvitationChannel;
 
     // Send email if channel is email or both
-    if ((channel === 'email' || channel === 'both') && contact.email) {
+    if ((channel === 'email' || channel === 'both') && email) {
       const emailResult = await sendEmail({
-        to: contact.email,
+        to: email,
         subject: emailSubject,
         react: InvitationEmail({
           firstName,
@@ -594,9 +594,9 @@ export async function sendInvitations(
     }
 
     // Send SMS if channel is sms or both
-    if ((channel === 'sms' || channel === 'both') && contact.phone) {
+    if ((channel === 'sms' || channel === 'both') && phone) {
       const smsResult = await sendSms({
-        to: contact.phone,
+        to: phone,
         body: smsBody,
       });
 
@@ -678,10 +678,13 @@ export async function sendSaveTheDates(
     return { success: false, error: 'Event not found.' };
   }
 
-  // Build contacts query based on scope
+  // Build contacts query based on scope; read name/email/phone via the master join.
   let query = supabase
     .from('contacts')
-    .select('id, first_name, last_name, email, phone, invitation_channel')
+    .select(
+      `id, invitation_channel,
+       master_contacts!inner(first_name, last_name, email, phone)`
+    )
     .eq('event_id', eventId)
     .neq('invitation_channel', 'none');
 
@@ -714,14 +717,22 @@ export async function sendSaveTheDates(
   const failedDetails: string[] = [];
 
   for (const contact of contacts) {
-    const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Guest';
-    const firstName = contact.first_name || 'Guest';
+    const master = Array.isArray(contact.master_contacts)
+      ? contact.master_contacts[0]
+      : contact.master_contacts;
+    const first_name = master?.first_name ?? '';
+    const last_name = master?.last_name ?? '';
+    const email = master?.email ?? null;
+    const phone = master?.phone ?? null;
+
+    const name = [first_name, last_name].filter(Boolean).join(' ') || 'Guest';
+    const firstName = first_name || 'Guest';
     const channel = contact.invitation_channel as InvitationChannel;
 
     // Send email if channel is email or both
-    if ((channel === 'email' || channel === 'both') && contact.email) {
+    if ((channel === 'email' || channel === 'both') && email) {
       const emailResult = await sendEmail({
-        to: contact.email,
+        to: email,
         subject: emailSubject,
         react: SaveTheDateEmail({
           firstName,
@@ -750,9 +761,9 @@ export async function sendSaveTheDates(
     }
 
     // Send SMS if channel is sms or both
-    if ((channel === 'sms' || channel === 'both') && contact.phone) {
+    if ((channel === 'sms' || channel === 'both') && phone) {
       const smsResult = await sendSms({
-        to: contact.phone,
+        to: phone,
         body: smsBody,
       });
 
@@ -1016,32 +1027,12 @@ export async function addMasterContactsToEvent(
     return { success: true, data: { added: 0, alreadyInEvent: items.length } };
   }
 
-  // Look up master contact records to populate legacy contacts columns.
-  const { data: masters, error: masterErr } = await supabase
-    .from('master_contacts')
-    .select('id, first_name, last_name, email, phone')
-    .in('id', toLinkIds);
-  if (masterErr) return { success: false, error: masterErr.message };
-  const masterById = new Map(
-    (masters ?? []).map((m) => [m.id as string, m])
-  );
-
-  const joinRows = toLinkItems.flatMap((item) => {
-    const m = masterById.get(item.masterContactId);
-    if (!m) return [];
-    return [
-      {
-        event_id: eventId,
-        master_contact_id: item.masterContactId,
-        invitation_channel: invitationChannel as InvitationChannel,
-        added_by: item.addedBy,
-        first_name: (m.first_name as string) || '',
-        last_name: (m.last_name as string) || '',
-        email: (m.email as string) || '',
-        phone: (m.phone as string | null) ?? null,
-      },
-    ];
-  });
+  const joinRows = toLinkItems.map((item) => ({
+    event_id: eventId,
+    master_contact_id: item.masterContactId,
+    invitation_channel: invitationChannel as InvitationChannel,
+    added_by: item.addedBy,
+  }));
 
   if (joinRows.length === 0) {
     return { success: true, data: { added: 0, alreadyInEvent: linkedSet.size } };

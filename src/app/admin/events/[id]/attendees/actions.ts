@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { isValidPhone, normalizePhone, PHONE_VALIDATION_MESSAGE } from '@/lib/phone';
 import type { ActionResponse } from '@/types/actions';
 
 const walkInSchema = z.object({
@@ -16,6 +17,7 @@ const walkInSchema = z.object({
     .string()
     .max(30, 'Phone number too long')
     .nullable()
+    .refine((v) => isValidPhone(v), PHONE_VALIDATION_MESSAGE)
     .transform((v) => v || null),
   quantity: z.number().int().min(1, 'Quantity must be at least 1'),
 });
@@ -64,7 +66,7 @@ export async function createWalkIn(
       contact_id: null,
       attendee_name: parsed.data.attendee_name,
       attendee_email: parsed.data.attendee_email,
-      attendee_phone: parsed.data.attendee_phone,
+      attendee_phone: normalizePhone(parsed.data.attendee_phone),
       quantity: parsed.data.quantity,
       amount_paid_cents: 0,
       status: 'confirmed',

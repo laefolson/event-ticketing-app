@@ -118,12 +118,6 @@ export async function syncMasterContactFromCheckout(
     master_contact_id: masterContactId,
     added_by: input.addedBy,
     invitation_channel: channel,
-    // Legacy columns populated during the transitional period until the
-    // destructive follow-up migration drops them.
-    first_name: first,
-    last_name: last,
-    email,
-    phone,
   });
   if (joinInsertErr) {
     throw new Error(`Failed to create contacts join row: ${joinInsertErr.message}`);
