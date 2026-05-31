@@ -108,13 +108,14 @@ export default async function EventPage({ params }: EventPageProps) {
       {/* Hero */}
       <section className="relative">
         {event.cover_image_url ? (
-          <div className="relative h-64 sm:h-80 md:h-96">
+          <div className="relative aspect-[3/1] w-full overflow-hidden">
             <Image
               src={event.cover_image_url}
               alt={event.title}
               fill
               className="object-cover"
               priority
+              sizes="100vw"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 p-6 sm:p-8">
