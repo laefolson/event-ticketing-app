@@ -9,7 +9,7 @@ import { sendSms } from '@/lib/twilio';
 import { TicketConfirmationEmail } from '@/emails/ticket-confirmation-email';
 import { syncMasterContactFromCheckout } from '@/lib/checkout-master-sync';
 import { getVenueName } from '@/lib/settings';
-import { formatDate, formatCents, getBaseUrl } from '@/lib/utils';
+import { formatDate, formatCents, getBaseUrl, generateTicketCode } from '@/lib/utils';
 import { generateQrDataUrl } from '@/lib/qr';
 import type { ActionResponse } from '@/types/actions';
 import type { PaymentMethod } from '@/types/database';
@@ -124,6 +124,9 @@ export async function createManualTicket(
       attendee_name: parsed.data.attendee_name,
       attendee_email: parsed.data.attendee_email,
       attendee_phone,
+      // Set explicitly so we never depend on whatever DEFAULT the column
+      // happens to have on this DB. Matches the RSVP / Stripe checkout paths.
+      ticket_code: generateTicketCode(),
       quantity: parsed.data.quantity,
       amount_paid_cents: parsed.data.amount_paid_cents,
       payment_method: parsed.data.payment_method as PaymentMethod,
