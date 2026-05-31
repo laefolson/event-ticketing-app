@@ -2,36 +2,88 @@
 
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { isValidPhone, normalizePhone, PHONE_VALIDATION_MESSAGE } from '@/lib/phone';
+import { sendEmail } from '@/lib/resend';
+import { sendSms } from '@/lib/twilio';
+import { TicketConfirmationEmail } from '@/emails/ticket-confirmation-email';
+import { syncMasterContactFromCheckout } from '@/lib/checkout-master-sync';
+import { getVenueName } from '@/lib/settings';
+import { formatDate, formatCents, getBaseUrl } from '@/lib/utils';
+import { generateQrDataUrl } from '@/lib/qr';
 import type { ActionResponse } from '@/types/actions';
+import type { PaymentMethod } from '@/types/database';
 
-const walkInSchema = z.object({
-  tier_id: z.string().uuid('Invalid tier'),
-  attendee_name: z.string().min(1, 'Name is required').max(500),
-  attendee_email: z
-    .string()
-    .email('Invalid email address')
-    .nullable()
-    .transform((v) => v || null),
-  attendee_phone: z
-    .string()
-    .max(30, 'Phone number too long')
-    .nullable()
-    .refine((v) => isValidPhone(v), PHONE_VALIDATION_MESSAGE)
-    .transform((v) => v || null),
-  quantity: z.number().int().min(1, 'Quantity must be at least 1'),
-});
+const paymentMethodEnum = z.enum([
+  'stripe', 'cash', 'venmo', 'paypal', 'check', 'comp', 'other',
+]);
 
-export type WalkInInput = z.infer<typeof walkInSchema>;
+const manualTicketSchema = z
+  .object({
+    tier_id: z.string().uuid('Invalid tier'),
+    attendee_name: z.string().min(1, 'Name is required').max(500),
+    attendee_email: z
+      .string()
+      .email('Invalid email address')
+      .nullable()
+      .transform((v) => v || null),
+    attendee_phone: z
+      .string()
+      .max(30, 'Phone number too long')
+      .nullable()
+      .refine((v) => isValidPhone(v), PHONE_VALIDATION_MESSAGE)
+      .transform((v) => v || null),
+    quantity: z.number().int().min(1, 'Quantity must be at least 1'),
+    amount_paid_cents: z
+      .number()
+      .int()
+      .min(0, 'Amount must be 0 or more')
+      .max(100_000_00, 'Amount looks unreasonable'),
+    payment_method: paymentMethodEnum,
+    payment_note: z.string().max(500).nullable().optional(),
+    deliver_email: z.boolean(),
+    deliver_sms: z.boolean(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.attendee_email && !data.attendee_phone) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Provide at least one of email or phone.',
+        path: ['attendee_email'],
+      });
+    }
+    if (data.deliver_email && !data.attendee_email) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Email is required to deliver via email.',
+        path: ['deliver_email'],
+      });
+    }
+    if (data.deliver_sms && !data.attendee_phone) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Phone is required to deliver via SMS.',
+        path: ['deliver_sms'],
+      });
+    }
+  });
 
-export async function createWalkIn(
+export type ManualTicketInput = z.infer<typeof manualTicketSchema>;
+
+export interface ManualTicketResult {
+  ticketId: string;
+  emailSent: boolean;
+  smsSent: boolean;
+  deliveryError?: string;
+}
+
+export async function createManualTicket(
   eventId: string,
-  input: WalkInInput
-): Promise<ActionResponse<{ ticketId: string }>> {
-  const parsed = walkInSchema.safeParse(input);
+  input: ManualTicketInput
+): Promise<ActionResponse<ManualTicketResult>> {
+  const parsed = manualTicketSchema.safeParse(input);
   if (!parsed.success) {
-    const firstError = parsed.error.issues[0];
-    return { success: false, error: firstError.message };
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   }
 
   const supabase = await createClient();
@@ -40,55 +92,166 @@ export async function createWalkIn(
     data: { user },
     error: authError,
   } = await supabase.auth.getUser();
-
   if (authError || !user) {
     return { success: false, error: 'You must be logged in.' };
   }
 
-  // Verify tier belongs to this event
+  // Verify tier belongs to this event + pull data needed for delivery.
   const { data: tier, error: tierError } = await supabase
     .from('ticket_tiers')
-    .select('id')
+    .select('id, name, price_cents')
     .eq('id', parsed.data.tier_id)
     .eq('event_id', eventId)
     .single();
-
   if (tierError || !tier) {
     return { success: false, error: 'Tier not found for this event.' };
   }
 
-  // Insert ticket with confirmed status, $0 walk-in
-  const { data: ticket, error: insertError } = await supabase
+  const attendee_phone = normalizePhone(parsed.data.attendee_phone);
+  const payment_note = parsed.data.payment_note?.trim() || null;
+
+  // Service client for the insert + master sync + delivery — keeps things
+  // consistent with the Stripe webhook / RSVP paths and bypasses RLS once
+  // we've already auth-checked the admin above.
+  const serviceClient = createServiceClient();
+
+  const { data: ticket, error: insertError } = await serviceClient
     .from('tickets')
     .insert({
       event_id: eventId,
-      tier_id: parsed.data.tier_id,
+      tier_id: tier.id,
       contact_id: null,
       attendee_name: parsed.data.attendee_name,
       attendee_email: parsed.data.attendee_email,
-      attendee_phone: normalizePhone(parsed.data.attendee_phone),
+      attendee_phone,
       quantity: parsed.data.quantity,
-      amount_paid_cents: 0,
+      amount_paid_cents: parsed.data.amount_paid_cents,
+      payment_method: parsed.data.payment_method as PaymentMethod,
+      payment_note,
       status: 'confirmed',
       stripe_payment_intent_id: null,
       stripe_session_id: null,
     })
-    .select('id')
+    .select('id, ticket_code')
     .single();
-
   if (insertError) {
     return { success: false, error: insertError.message };
   }
 
-  // Atomically increment quantity_sold on the tier
-  const { error: rpcError } = await supabase
-    .rpc('adjust_quantity_sold', { p_tier_id: tier.id, p_delta: parsed.data.quantity });
-
+  const { error: rpcError } = await serviceClient.rpc('adjust_quantity_sold', {
+    p_tier_id: tier.id,
+    p_delta: parsed.data.quantity,
+  });
   if (rpcError) {
+    // The ticket exists; surface the inventory error so admins can recover.
     return { success: false, error: rpcError.message };
   }
 
-  return { success: true, data: { ticketId: ticket.id } };
+  // Sync master_contact + create the per-event contacts join row, mirroring
+  // the Stripe webhook / RSVP flow. Best-effort.
+  if (parsed.data.attendee_email) {
+    try {
+      await syncMasterContactFromCheckout(serviceClient, {
+        eventId,
+        email: parsed.data.attendee_email,
+        name: parsed.data.attendee_name,
+        phone: attendee_phone,
+        source: 'manual',
+        addedBy: 'manual',
+      });
+    } catch (err) {
+      console.error(
+        `createManualTicket master sync failed for ${parsed.data.attendee_email}:`,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
+  // Look up the event + venue once for delivery payloads below.
+  const { data: event } = await serviceClient
+    .from('events')
+    .select('title, slug, date_start, location_name, ticket_qr_enabled, cover_image_url')
+    .eq('id', eventId)
+    .single();
+
+  let emailSent = false;
+  let smsSent = false;
+  let deliveryError: string | undefined;
+
+  if (event && (parsed.data.deliver_email || parsed.data.deliver_sms)) {
+    const venueName = await getVenueName();
+    const dateFormatted = formatDate(event.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
+    const baseUrl = getBaseUrl();
+    const ticketQrEnabled = !!event.ticket_qr_enabled;
+
+    if (parsed.data.deliver_email && parsed.data.attendee_email) {
+      const line: { tierName: string; quantity: number; ticketCode: string; qrDataUrl?: string } = {
+        tierName: tier.name,
+        quantity: parsed.data.quantity,
+        ticketCode: ticket.ticket_code,
+      };
+      if (ticketQrEnabled) {
+        line.qrDataUrl = await generateQrDataUrl(
+          `${baseUrl}/e/${event.slug}/verify/${ticket.ticket_code}`
+        );
+      }
+      const emailResult = await sendEmail({
+        to: parsed.data.attendee_email,
+        subject: `Your Tickets: ${event.title}`,
+        react: TicketConfirmationEmail({
+          attendeeName: parsed.data.attendee_name,
+          eventTitle: event.title,
+          dateFormatted,
+          locationName: event.location_name,
+          tickets: [line],
+          amountPaidFormatted: formatCents(parsed.data.amount_paid_cents),
+          venueName,
+          ticketQrEnabled,
+          coverImageUrl: event.cover_image_url,
+        }),
+      });
+      emailSent = emailResult.success;
+      if (!emailResult.success) deliveryError = `Email: ${emailResult.error}`;
+      await serviceClient.from('invitation_logs').insert({
+        event_id: eventId,
+        contact_id: null,
+        message_type: 'ticket_resend',
+        channel: 'email',
+        status: emailResult.success ? 'sent' : 'failed',
+        provider_message_id: emailResult.messageId ?? null,
+      });
+    }
+
+    if (parsed.data.deliver_sms && attendee_phone) {
+      const shortDate = formatDate(event.date_start, 'MMM d');
+      const verifyUrl = `${baseUrl}/e/${event.slug}/verify/${ticket.ticket_code}`;
+      const qtyTag = parsed.data.quantity > 1 ? ` (x${parsed.data.quantity})` : '';
+      const smsResult = await sendSms({
+        to: attendee_phone,
+        body: `Your ticket for ${event.title} on ${shortDate}${qtyTag}: ${ticket.ticket_code}. View: ${verifyUrl}`,
+      });
+      smsSent = smsResult.success;
+      if (!smsResult.success) deliveryError = `SMS: ${smsResult.error}`;
+      await serviceClient.from('invitation_logs').insert({
+        event_id: eventId,
+        contact_id: null,
+        message_type: 'ticket_resend',
+        channel: 'sms',
+        status: smsResult.success ? 'sent' : 'failed',
+        provider_message_id: smsResult.messageId ?? null,
+      });
+    }
+  }
+
+  return {
+    success: true,
+    data: {
+      ticketId: ticket.id,
+      emailSent,
+      smsSent,
+      deliveryError,
+    },
+  };
 }
 
 const toggleSchema = z.object({
@@ -102,8 +265,7 @@ export async function toggleCheckIn(
 ): Promise<ActionResponse> {
   const parsed = toggleSchema.safeParse({ ticketId, newStatus });
   if (!parsed.success) {
-    const firstError = parsed.error.issues[0];
-    return { success: false, error: firstError.message };
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   }
 
   const supabase = await createClient();
@@ -112,22 +274,18 @@ export async function toggleCheckIn(
     data: { user },
     error: authError,
   } = await supabase.auth.getUser();
-
   if (authError || !user) {
     return { success: false, error: 'You must be logged in.' };
   }
 
-  // Verify ticket exists and is in a toggleable status
   const { data: ticket, error: fetchError } = await supabase
     .from('tickets')
     .select('id, status')
     .eq('id', parsed.data.ticketId)
     .single();
-
   if (fetchError || !ticket) {
     return { success: false, error: 'Ticket not found.' };
   }
-
   if (ticket.status !== 'confirmed' && ticket.status !== 'checked_in') {
     return { success: false, error: 'Ticket cannot be toggled in its current status.' };
   }
@@ -141,7 +299,6 @@ export async function toggleCheckIn(
     .from('tickets')
     .update(updateData)
     .eq('id', parsed.data.ticketId);
-
   if (updateError) {
     return { success: false, error: updateError.message };
   }

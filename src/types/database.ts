@@ -11,6 +11,7 @@ export type MessageChannel = 'email' | 'sms';
 export type MessageStatus = 'sent' | 'delivered' | 'failed' | 'bounced';
 export type ContactSource = 'manual' | 'csv_import' | 'google_sheets' | 'checkout' | 'rsvp';
 export type ContactAddedBy = 'csv_import' | 'google_sheets' | 'manual' | 'checkout' | 'rsvp' | 'event_copy';
+export type PaymentMethod = 'stripe' | 'cash' | 'venmo' | 'paypal' | 'check' | 'comp' | 'other';
 
 export interface Event {
   id: string;
@@ -108,6 +109,8 @@ export interface Ticket {
   stripe_payment_intent_id: string | null;
   stripe_session_id: string | null;
   amount_paid_cents: number;
+  payment_method: PaymentMethod;
+  payment_note: string | null;
   status: TicketStatus;
   checked_in_at: string | null;
   purchased_at: string;

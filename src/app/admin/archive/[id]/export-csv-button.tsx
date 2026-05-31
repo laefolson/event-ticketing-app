@@ -9,6 +9,8 @@ interface TicketRow {
   attendee_phone: string | null;
   quantity: number;
   amount_paid_cents: number;
+  payment_method: string;
+  payment_note: string | null;
   status: string;
   checked_in_at: string | null;
   tier_name: string;
@@ -35,6 +37,8 @@ export function ExportCsvButton({ tickets, eventTitle }: ExportCsvButtonProps) {
       'Tier',
       'Quantity',
       'Amount Paid',
+      'Payment Method',
+      'Payment Note',
       'Status',
       'Checked In At',
     ];
@@ -46,6 +50,8 @@ export function ExportCsvButton({ tickets, eventTitle }: ExportCsvButtonProps) {
       escapeCsv(t.tier_name),
       String(t.quantity),
       (t.amount_paid_cents / 100).toFixed(2),
+      escapeCsv(t.payment_method),
+      escapeCsv(t.payment_note ?? ''),
       t.status,
       t.checked_in_at ?? '',
     ]);

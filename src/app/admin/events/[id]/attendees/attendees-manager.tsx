@@ -32,8 +32,33 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { createWalkIn, toggleCheckIn } from './actions';
-import type { Ticket, TicketTier } from '@/types/database';
+import { toast } from 'sonner';
+import { Switch } from '@/components/ui/switch';
+import { createManualTicket, toggleCheckIn } from './actions';
+import type { PaymentMethod, Ticket, TicketTier } from '@/types/database';
+
+const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'venmo', label: 'Venmo' },
+  { value: 'paypal', label: 'PayPal' },
+  { value: 'check', label: 'Check' },
+  { value: 'comp', label: 'Comp' },
+  { value: 'other', label: 'Other' },
+];
+
+const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  stripe: 'Stripe',
+  cash: 'Cash',
+  venmo: 'Venmo',
+  paypal: 'PayPal',
+  check: 'Check',
+  comp: 'Comp',
+  other: 'Other',
+};
+
+function paymentMethodLabel(method: PaymentMethod): string {
+  return PAYMENT_METHOD_LABELS[method] ?? method;
+}
 
 type TicketWithTier = Ticket & {
   ticket_tiers: { id: string; name: string; price_cents: number } | null;
@@ -56,12 +81,17 @@ interface AttendeesManagerProps {
   smsConsents: SmsConsent[];
 }
 
-const emptyWalkInForm = {
+const emptyAddTicketForm = {
   tier_id: '',
   attendee_name: '',
   attendee_email: '',
   attendee_phone: '',
   quantity: 1,
+  amount_dollars: '',
+  payment_method: 'cash' as PaymentMethod,
+  payment_note: '',
+  deliver_email: false,
+  deliver_sms: false,
 };
 
 
@@ -84,11 +114,11 @@ export function AttendeesManager({
 }: AttendeesManagerProps) {
   const router = useRouter();
 
-  // Walk-in dialog state
-  const [walkInOpen, setWalkInOpen] = useState(false);
-  const [walkInForm, setWalkInForm] = useState(emptyWalkInForm);
-  const [walkInPending, setWalkInPending] = useState(false);
-  const [walkInError, setWalkInError] = useState<string | null>(null);
+  // Add Ticket dialog state
+  const [addTicketOpen, setAddTicketOpen] = useState(false);
+  const [addTicketForm, setAddTicketForm] = useState(emptyAddTicketForm);
+  const [addTicketPending, setAddTicketPending] = useState(false);
+  const [addTicketError, setAddTicketError] = useState<string | null>(null);
 
   // Search
   const [search, setSearch] = useState('');
@@ -143,7 +173,7 @@ export function AttendeesManager({
   // CSV export
   function handleExportCsv() {
     const headers = [
-      'Name', 'Email', 'Phone', 'Tier', 'Qty', 'Amount Paid',
+      'Name', 'Email', 'Phone', 'Tier', 'Qty', 'Amount Paid', 'Payment Method', 'Payment Note',
       'Status', 'Purchased', 'SMS Event Opt-In', 'SMS Marketing Opt-In',
     ];
     const rows = tickets.map((t) => [
@@ -153,6 +183,8 @@ export function AttendeesManager({
       escapeCsvValue(t.ticket_tiers?.name ?? ''),
       String(t.quantity),
       formatPrice(t.amount_paid_cents),
+      escapeCsvValue(paymentMethodLabel(t.payment_method)),
+      escapeCsvValue(t.payment_note ?? ''),
       t.status === 'checked_in' ? 'Checked In' : 'Confirmed',
       formatDate(t.purchased_at, 'yyyy-MM-dd'),
       hasConsent(t.attendee_phone, eventOptInPhones) ? 'Yes' : 'No',
@@ -169,33 +201,90 @@ export function AttendeesManager({
     URL.revokeObjectURL(url);
   }
 
-  // Walk-in handlers
-  function openWalkIn() {
-    setWalkInForm(emptyWalkInForm);
-    setWalkInError(null);
-    setWalkInOpen(true);
+  // Add Ticket handlers
+  function openAddTicket() {
+    setAddTicketForm(emptyAddTicketForm);
+    setAddTicketError(null);
+    setAddTicketOpen(true);
   }
 
-  async function handleWalkInSave() {
-    setWalkInError(null);
-    setWalkInPending(true);
+  const selectedTier = tiers.find((t) => t.id === addTicketForm.tier_id);
+  const compIsActive = addTicketForm.payment_method === 'comp';
 
-    const result = await createWalkIn(eventId, {
-      tier_id: walkInForm.tier_id,
-      attendee_name: walkInForm.attendee_name,
-      attendee_email: walkInForm.attendee_email || null,
-      attendee_phone: walkInForm.attendee_phone || null,
-      quantity: walkInForm.quantity,
+  function handleTierChange(tierId: string) {
+    const t = tiers.find((tier) => tier.id === tierId);
+    if (!t) {
+      setAddTicketForm({ ...addTicketForm, tier_id: tierId });
+      return;
+    }
+    const newDollars = compIsActive
+      ? '0.00'
+      : ((t.price_cents * addTicketForm.quantity) / 100).toFixed(2);
+    setAddTicketForm({ ...addTicketForm, tier_id: tierId, amount_dollars: newDollars });
+  }
+
+  function handleQuantityChange(next: number) {
+    const q = Math.max(1, next);
+    let newDollars = addTicketForm.amount_dollars;
+    if (selectedTier && !compIsActive) {
+      newDollars = ((selectedTier.price_cents * q) / 100).toFixed(2);
+    }
+    setAddTicketForm({ ...addTicketForm, quantity: q, amount_dollars: newDollars });
+  }
+
+  function toggleComp(on: boolean) {
+    if (on) {
+      setAddTicketForm({ ...addTicketForm, payment_method: 'comp', amount_dollars: '0.00' });
+    } else {
+      const refilled = selectedTier
+        ? ((selectedTier.price_cents * addTicketForm.quantity) / 100).toFixed(2)
+        : '';
+      setAddTicketForm({ ...addTicketForm, payment_method: 'cash', amount_dollars: refilled });
+    }
+  }
+
+  async function handleAddTicketSave() {
+    setAddTicketError(null);
+    setAddTicketPending(true);
+
+    const dollars = parseFloat(addTicketForm.amount_dollars);
+    if (Number.isNaN(dollars) || dollars < 0) {
+      setAddTicketError('Enter a valid amount paid.');
+      setAddTicketPending(false);
+      return;
+    }
+    const amount_paid_cents = Math.round(dollars * 100);
+
+    const result = await createManualTicket(eventId, {
+      tier_id: addTicketForm.tier_id,
+      attendee_name: addTicketForm.attendee_name,
+      attendee_email: addTicketForm.attendee_email || null,
+      attendee_phone: addTicketForm.attendee_phone || null,
+      quantity: addTicketForm.quantity,
+      amount_paid_cents,
+      payment_method: addTicketForm.payment_method,
+      payment_note: addTicketForm.payment_note.trim() || null,
+      deliver_email: addTicketForm.deliver_email,
+      deliver_sms: addTicketForm.deliver_sms,
     });
 
-    setWalkInPending(false);
+    setAddTicketPending(false);
 
     if (!result.success) {
-      setWalkInError(result.error ?? 'Something went wrong.');
+      setAddTicketError(result.error ?? 'Something went wrong.');
       return;
     }
 
-    setWalkInOpen(false);
+    const data = result.data!;
+    const parts: string[] = ['Ticket created'];
+    if (data.emailSent) parts.push('email sent');
+    if (data.smsSent) parts.push('SMS sent');
+    if (data.deliveryError) {
+      toast.warning(`${parts.join(' · ')} — ${data.deliveryError}`);
+    } else {
+      toast.success(parts.join(' · '));
+    }
+    setAddTicketOpen(false);
     router.refresh();
   }
 
@@ -237,9 +326,9 @@ export function AttendeesManager({
             <Download className="mr-2 h-4 w-4" />
             Export CSV
           </Button>
-          <Button onClick={openWalkIn}>
+          <Button onClick={openAddTicket}>
             <Plus className="mr-2 h-4 w-4" />
-            Walk-in
+            Add Ticket
           </Button>
         </div>
       </div>
@@ -278,11 +367,11 @@ export function AttendeesManager({
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <p className="text-muted-foreground mb-4">
-              No confirmed attendees yet. Add a walk-in ticket to get started.
+              No confirmed attendees yet. Add a ticket manually to get started.
             </p>
-            <Button variant="outline" onClick={openWalkIn}>
+            <Button variant="outline" onClick={openAddTicket}>
               <Plus className="mr-2 h-4 w-4" />
-              Walk-in
+              Add Ticket
             </Button>
           </CardContent>
         </Card>
@@ -310,7 +399,7 @@ export function AttendeesManager({
                   <TableHead>Tier</TableHead>
                   <TableHead className="text-center">Qty</TableHead>
                   <TableHead>Code</TableHead>
-                  <TableHead>Paid</TableHead>
+                  <TableHead>Payment</TableHead>
                   <TableHead>Purchased</TableHead>
                   <TableHead className="text-center">SMS Event</TableHead>
                   <TableHead className="text-center">SMS Marketing</TableHead>
@@ -352,7 +441,20 @@ export function AttendeesManager({
                           </code>
                         </TableCell>
                         <TableCell>
-                          {formatPrice(ticket.amount_paid_cents)}
+                          {ticket.payment_method === 'comp' ? (
+                            <span className="text-muted-foreground">Comp</span>
+                          ) : (
+                            <span>
+                              {paymentMethodLabel(ticket.payment_method)}
+                              <span className="text-muted-foreground"> · </span>
+                              {formatPrice(ticket.amount_paid_cents)}
+                            </span>
+                          )}
+                          {ticket.payment_note && (
+                            <div className="text-xs text-muted-foreground truncate max-w-[140px]" title={ticket.payment_note}>
+                              {ticket.payment_note}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {formatDate(ticket.purchased_at, 'MMM d')}
@@ -412,32 +514,27 @@ export function AttendeesManager({
         </>
       )}
 
-      {/* Walk-in Dialog */}
-      <Dialog open={walkInOpen} onOpenChange={setWalkInOpen}>
-        <DialogContent>
+      {/* Add Ticket Dialog */}
+      <Dialog open={addTicketOpen} onOpenChange={setAddTicketOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Walk-in Ticket</DialogTitle>
+            <DialogTitle>Add Ticket</DialogTitle>
             <DialogDescription>
-              Create a complimentary ticket for a walk-in attendee.
+              Record a manual sale or comp. The ticket can be delivered by email and/or SMS.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            {walkInError && (
+            {addTicketError && (
               <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
-                {walkInError}
+                {addTicketError}
               </div>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="walkin-tier">Tier *</Label>
-              <Select
-                value={walkInForm.tier_id}
-                onValueChange={(val) =>
-                  setWalkInForm({ ...walkInForm, tier_id: val })
-                }
-              >
-                <SelectTrigger id="walkin-tier" className="w-full">
+              <Label htmlFor="addticket-tier">Tier *</Label>
+              <Select value={addTicketForm.tier_id} onValueChange={handleTierChange}>
+                <SelectTrigger id="addticket-tier" className="w-full">
                   <SelectValue placeholder="Select a tier" />
                 </SelectTrigger>
                 <SelectContent>
@@ -450,93 +547,183 @@ export function AttendeesManager({
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="walkin-name">Name *</Label>
-              <Input
-                id="walkin-name"
-                value={walkInForm.attendee_name}
-                onChange={(e) =>
-                  setWalkInForm({
-                    ...walkInForm,
-                    attendee_name: e.target.value,
-                  })
-                }
-                placeholder="Jane Smith"
-                maxLength={500}
-              />
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-2 space-y-2">
+                <Label htmlFor="addticket-name">Name *</Label>
+                <Input
+                  id="addticket-name"
+                  value={addTicketForm.attendee_name}
+                  onChange={(e) =>
+                    setAddTicketForm({ ...addTicketForm, attendee_name: e.target.value })
+                  }
+                  placeholder="Jane Smith"
+                  maxLength={500}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="addticket-quantity">Quantity</Label>
+                <Input
+                  id="addticket-quantity"
+                  type="number"
+                  min={1}
+                  value={addTicketForm.quantity}
+                  onChange={(e) => handleQuantityChange(parseInt(e.target.value, 10) || 1)}
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="walkin-email">Email</Label>
-              <Input
-                id="walkin-email"
-                type="email"
-                value={walkInForm.attendee_email}
-                onChange={(e) =>
-                  setWalkInForm({
-                    ...walkInForm,
-                    attendee_email: e.target.value,
-                  })
-                }
-                placeholder="jane@example.com"
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <Label htmlFor="addticket-email">Email</Label>
+                <Input
+                  id="addticket-email"
+                  type="email"
+                  value={addTicketForm.attendee_email}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setAddTicketForm((f) => ({
+                      ...f,
+                      attendee_email: next,
+                      deliver_email: next && !f.attendee_email ? true : f.deliver_email,
+                    }));
+                  }}
+                  placeholder="jane@example.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="addticket-phone">Phone</Label>
+                <Input
+                  id="addticket-phone"
+                  type="tel"
+                  value={addTicketForm.attendee_phone}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setAddTicketForm((f) => ({
+                      ...f,
+                      attendee_phone: next,
+                      deliver_sms: next && !f.attendee_phone ? true : f.deliver_sms,
+                    }));
+                  }}
+                  placeholder="(555) 123-4567"
+                  maxLength={30}
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="walkin-phone">Phone</Label>
-              <Input
-                id="walkin-phone"
-                type="tel"
-                value={walkInForm.attendee_phone}
-                onChange={(e) =>
-                  setWalkInForm({
-                    ...walkInForm,
-                    attendee_phone: e.target.value,
-                  })
-                }
-                placeholder="+1 555-123-4567"
-                maxLength={30}
-              />
+            <div className="rounded-md border p-3 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="addticket-comp" className="cursor-pointer">
+                  Comp this ticket
+                </Label>
+                <Switch
+                  id="addticket-comp"
+                  checked={compIsActive}
+                  onCheckedChange={toggleComp}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="addticket-amount" className="text-xs">Amount paid ($)</Label>
+                  <Input
+                    id="addticket-amount"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={addTicketForm.amount_dollars}
+                    onChange={(e) =>
+                      setAddTicketForm({ ...addTicketForm, amount_dollars: e.target.value })
+                    }
+                    disabled={compIsActive}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="addticket-method" className="text-xs">Payment method</Label>
+                  <Select
+                    value={addTicketForm.payment_method}
+                    onValueChange={(val) =>
+                      setAddTicketForm({ ...addTicketForm, payment_method: val as PaymentMethod })
+                    }
+                  >
+                    <SelectTrigger id="addticket-method" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAYMENT_METHODS.map((m) => (
+                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="addticket-note" className="text-xs">Payment note (optional)</Label>
+                <Input
+                  id="addticket-note"
+                  value={addTicketForm.payment_note}
+                  onChange={(e) =>
+                    setAddTicketForm({ ...addTicketForm, payment_note: e.target.value })
+                  }
+                  placeholder="@venmo-handle / check #1234 / comp from John"
+                  maxLength={500}
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="walkin-quantity">Quantity</Label>
-              <Input
-                id="walkin-quantity"
-                type="number"
-                min={1}
-                value={walkInForm.quantity}
-                onChange={(e) =>
-                  setWalkInForm({
-                    ...walkInForm,
-                    quantity: parseInt(e.target.value, 10) || 1,
-                  })
-                }
-              />
+            <div className="rounded-md border p-3 space-y-2">
+              <p className="text-sm font-medium">Deliver ticket via</p>
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-stone-300"
+                    checked={addTicketForm.deliver_email}
+                    disabled={!addTicketForm.attendee_email}
+                    onChange={(e) =>
+                      setAddTicketForm({ ...addTicketForm, deliver_email: e.target.checked })
+                    }
+                  />
+                  Email
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-stone-300"
+                    checked={addTicketForm.deliver_sms}
+                    disabled={!addTicketForm.attendee_phone}
+                    onChange={(e) =>
+                      setAddTicketForm({ ...addTicketForm, deliver_sms: e.target.checked })
+                    }
+                  />
+                  SMS
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Leave both off to record the ticket silently — you can send it later from the attendee&rsquo;s row.
+              </p>
             </div>
-
-            <p className="text-muted-foreground text-xs">
-              Walk-in tickets are always free ($0).
-            </p>
           </div>
 
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setWalkInOpen(false)}
-              disabled={walkInPending}
+              onClick={() => setAddTicketOpen(false)}
+              disabled={addTicketPending}
             >
               Cancel
             </Button>
             <Button
-              onClick={handleWalkInSave}
+              onClick={handleAddTicketSave}
               disabled={
-                walkInPending ||
-                !walkInForm.tier_id ||
-                !walkInForm.attendee_name.trim()
+                addTicketPending ||
+                !addTicketForm.tier_id ||
+                !addTicketForm.attendee_name.trim() ||
+                (!addTicketForm.attendee_email && !addTicketForm.attendee_phone)
               }
             >
-              {walkInPending ? 'Creating...' : 'Create Ticket'}
+              {addTicketPending ? 'Creating…' : 'Create Ticket'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -203,6 +203,8 @@ RLS must be enabled on all tables.
 | stripe_payment_intent_id | text | nullable for free |
 | stripe_session_id | text | |
 | amount_paid_cents | integer | |
+| payment_method | text | enum-via-check: `stripe \| cash \| venmo \| paypal \| check \| comp \| other`; default `stripe`. Stripe checkout sets `stripe`; the Add Ticket admin flow sets cash/venmo/paypal/check/comp/other. |
+| payment_note | text | nullable; admin free-text (Venmo handle, check #, comp reason) |
 | status | enum | `pending \| confirmed \| checked_in \| cancelled \| refunded` |
 | checked_in_at | timestamptz | |
 | purchased_at | timestamptz | |
@@ -448,10 +450,11 @@ Optional — most events run on honor system; check-in is not required.
 
 - Searchable list of confirmed tickets by name or email
 - Manual check-in toggle per attendee (sets `status = checked_in`)
-- Walk-in mode: create ticket manually (name, email, tier)
+- **Add Ticket** (renamed from Walk-in): admin records a manual sale or comp. Inputs: tier, name, email and/or phone (at least one), quantity, amount paid, payment method (Cash / Venmo / PayPal / Check / Comp / Other) with auto-filled price from the tier × quantity and a "Comp" toggle that zeroes the amount and sets method to `comp`, optional payment note, and "Deliver via" Email/SMS checkboxes. Bypasses `max_per_contact` (admin override). On submit: inserts a confirmed ticket with the chosen `payment_method`/`payment_note`, increments `quantity_sold`, syncs master_contacts via the shared helper with `source='manual'`, sends the standard `TicketConfirmationEmail` when email delivery is selected, sends a short ticket SMS (`Your ticket for {event} on {date}: {code}. View: {url}`) when SMS delivery is selected, and logs each delivery to `invitation_logs` as `message_type='ticket_resend'`.
 - Live counter: X checked in / Y expected
+- **Payment column** on the attendees table shows the method + amount (e.g., `Venmo · $25`, `Comp`); the optional payment note is shown beneath the amount.
 - **SMS opt-in columns:** two inline columns show whether each attendee opted in to SMS event updates and/or marketing (matched by normalized phone number against `sms_consents` records)
-- **Export CSV:** downloads full attendee list as `attendees-export.csv` with columns: Name, Email, Phone, Tier, Qty, Amount Paid, Status, Purchased, SMS Event Opt-In, SMS Marketing Opt-In
+- **Export CSV:** downloads full attendee list as `attendees-export.csv` with columns: Name, Email, Phone, Tier, Qty, Amount Paid, Payment Method, Payment Note, Status, Purchased, SMS Event Opt-In, SMS Marketing Opt-In
 
 > Phase 2: QR code scanning via device camera
 
@@ -462,8 +465,9 @@ Optional — most events run on honor system; check-in is not required.
 - `/admin/archive`: all archived events, sorted by date descending
 - Per-event archive page shows:
   - Tickets sold per tier, total revenue
+  - Payment breakdown by `payment_method` (rows for each of Stripe / Cash / Venmo / PayPal / Check / Comp / Other that have at least one ticket — count and revenue per method; the Comp row shows "—" for revenue)
   - Attendance count (checked_in vs confirmed)
-  - Full attendee list: name, email, tier, quantity, amount paid, check-in status
+  - Full attendee list: name, email, tier, quantity, amount paid, payment method/note, check-in status
   - Invitation stats (emails sent, SMS sent, delivery status)
   - Thank-you message stats
   - CSV import history

@@ -14,9 +14,9 @@ export interface CheckoutSyncInput {
   smsOptInEvent?: boolean;
   smsOptInMarketing?: boolean;
   /** New-master-only: which source label to record. */
-  source: Extract<ContactSource, 'checkout' | 'rsvp'>;
+  source: Extract<ContactSource, 'checkout' | 'rsvp' | 'manual'>;
   /** Per-event join row source label. */
-  addedBy: Extract<ContactAddedBy, 'checkout' | 'rsvp'>;
+  addedBy: Extract<ContactAddedBy, 'checkout' | 'rsvp' | 'manual'>;
   /** Override channel used on the contacts join row. Defaults to 'both' if a phone is present, otherwise 'email'. */
   invitationChannel?: InvitationChannel;
 }

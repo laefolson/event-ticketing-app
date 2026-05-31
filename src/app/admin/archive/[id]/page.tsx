@@ -78,7 +78,7 @@ export default async function ArchiveDetailPage({
     supabase
       .from('tickets')
       .select(
-        'attendee_name, attendee_email, attendee_phone, quantity, amount_paid_cents, status, checked_in_at, ticket_tiers(name)'
+        'attendee_name, attendee_email, attendee_phone, quantity, amount_paid_cents, payment_method, payment_note, status, checked_in_at, ticket_tiers(name)'
       )
       .eq('event_id', id)
       .order('purchased_at', { ascending: false }),
@@ -116,6 +116,35 @@ export default async function ArchiveDetailPage({
   const attendanceRate =
     totalSold > 0 ? Math.round((checkedInCount / totalSold) * 100) : 0;
 
+  // Revenue breakdown by payment method
+  const paymentBreakdown = activeTickets.reduce<Record<string, { revenue: number; count: number }>>(
+    (acc, t) => {
+      const key = t.payment_method ?? 'stripe';
+      if (!acc[key]) acc[key] = { revenue: 0, count: 0 };
+      acc[key].revenue += t.amount_paid_cents;
+      acc[key].count += t.quantity;
+      return acc;
+    },
+    {}
+  );
+  const PAYMENT_LABEL: Record<string, string> = {
+    stripe: 'Stripe',
+    cash: 'Cash',
+    venmo: 'Venmo',
+    paypal: 'PayPal',
+    check: 'Check',
+    comp: 'Comp',
+    other: 'Other',
+  };
+  const paymentRows = Object.entries(paymentBreakdown)
+    .map(([method, v]) => ({
+      method,
+      label: PAYMENT_LABEL[method] ?? method,
+      revenue: v.revenue,
+      count: v.count,
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
+
   // Messaging stats
   const logs = invitationLogs ?? [];
   const invitations = logs.filter((l) => l.message_type === 'invitation');
@@ -148,6 +177,8 @@ export default async function ArchiveDetailPage({
     attendee_phone: t.attendee_phone,
     quantity: t.quantity,
     amount_paid_cents: t.amount_paid_cents,
+    payment_method: t.payment_method,
+    payment_note: t.payment_note,
     status: t.status,
     checked_in_at: t.checked_in_at,
     tier_name:
@@ -273,6 +304,43 @@ export default async function ArchiveDetailPage({
                       </TableCell>
                       <TableCell className="text-right">
                         {formatPrice(tier.revenue)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Payment breakdown */}
+      {paymentRows.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Payment Breakdown</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Method</TableHead>
+                    <TableHead className="text-center">Tickets</TableHead>
+                    <TableHead className="text-right">Revenue</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paymentRows.map((row) => (
+                    <TableRow key={row.method}>
+                      <TableCell className="font-medium">{row.label}</TableCell>
+                      <TableCell className="text-center">{row.count}</TableCell>
+                      <TableCell className="text-right">
+                        {row.method === 'comp' ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          formatPrice(row.revenue)
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
