@@ -1,9 +1,11 @@
 'use server';
 
 import { z } from 'zod';
+import { fromZonedTime } from 'date-fns-tz';
 import { createClient } from '@/lib/supabase/server';
 import { stripe } from '@/lib/stripe';
 import { extractYouTubeId, YOUTUBE_URL_INVALID_MESSAGE } from '@/lib/youtube';
+import { VENUE_TZ } from '@/lib/utils';
 import type { ActionResponse } from '@/types/actions';
 import type { EventType } from '@/types/database';
 
@@ -40,8 +42,10 @@ const createEventSchema = z
     publish: z.boolean(),
   })
   .superRefine((data, ctx) => {
-    const start = new Date(data.date_start);
-    const end = new Date(data.date_end);
+    // The form passes a naive datetime like "2026-06-15T19:30" meant to be
+    // read in Mountain Time — convert to UTC before comparing.
+    const start = fromZonedTime(data.date_start, VENUE_TZ);
+    const end = fromZonedTime(data.date_end, VENUE_TZ);
     if (end <= start) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -115,8 +119,8 @@ export async function createEvent(
     .from('events')
     .insert({
       ...fields,
-      date_start: new Date(fields.date_start).toISOString(),
-      date_end: new Date(fields.date_end).toISOString(),
+      date_start: fromZonedTime(fields.date_start, VENUE_TZ).toISOString(),
+      date_end: fromZonedTime(fields.date_end, VENUE_TZ).toISOString(),
       gallery_urls: fields.gallery_urls ?? [],
       faq: fields.faq ?? [],
       slug,

@@ -1,9 +1,11 @@
 'use server';
 
 import { z } from 'zod';
+import { fromZonedTime } from 'date-fns-tz';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { extractYouTubeId, YOUTUBE_URL_INVALID_MESSAGE } from '@/lib/youtube';
+import { VENUE_TZ } from '@/lib/utils';
 import type { ActionResponse } from '@/types/actions';
 import type { EventType } from '@/types/database';
 
@@ -35,8 +37,8 @@ const updateEventSchema = z
     publish: z.boolean(),
   })
   .superRefine((data, ctx) => {
-    const start = new Date(data.date_start);
-    const end = new Date(data.date_end);
+    const start = fromZonedTime(data.date_start, VENUE_TZ);
+    const end = fromZonedTime(data.date_end, VENUE_TZ);
     if (end <= start) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -101,8 +103,8 @@ export async function updateEvent(
     .from('events')
     .update({
       ...fields,
-      date_start: new Date(fields.date_start).toISOString(),
-      date_end: new Date(fields.date_end).toISOString(),
+      date_start: fromZonedTime(fields.date_start, VENUE_TZ).toISOString(),
+      date_end: fromZonedTime(fields.date_end, VENUE_TZ).toISOString(),
       status: publish ? 'published' : 'draft',
       is_published: publish,
     })

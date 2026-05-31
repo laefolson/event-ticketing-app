@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { formatDate } from '@/lib/utils';
 import {
   Card,
   CardContent,
@@ -44,11 +45,11 @@ const EVENT_TYPE_OPTIONS: { value: EventType; label: string }[] = [
 ];
 
 function toDatePart(iso: string): string {
-  return new Date(iso).toISOString().slice(0, 10);
+  return formatDate(iso, 'yyyy-MM-dd');
 }
 
 function toTimePart(iso: string): string {
-  return new Date(iso).toISOString().slice(11, 16);
+  return formatDate(iso, 'HH:mm');
 }
 
 interface FormData {
