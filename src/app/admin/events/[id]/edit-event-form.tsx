@@ -65,6 +65,7 @@ interface FormData {
   host_bio: string;
   host_bio_headline: string;
   cover_image_url: string | null;
+  hide_title_on_hero: boolean;
   gallery_urls: string[];
   save_the_date_image_url: string | null;
   save_the_date_text: string;
@@ -92,6 +93,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
     host_bio: event.host_bio ?? '',
     host_bio_headline: event.host_bio_headline ?? 'About the Host',
     cover_image_url: event.cover_image_url ?? null,
+    hide_title_on_hero: event.hide_title_on_hero,
     gallery_urls: event.gallery_urls ?? [],
     save_the_date_image_url: event.save_the_date_image_url ?? null,
     save_the_date_text: event.save_the_date_text ?? '',
@@ -168,6 +170,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
         ? formData.host_bio_headline.trim()
         : null,
       cover_image_url: formData.cover_image_url,
+      hide_title_on_hero: formData.hide_title_on_hero,
       gallery_urls: formData.gallery_urls,
       save_the_date_image_url: formData.save_the_date_image_url,
       save_the_date_text: formData.save_the_date_text.trim() || null,
@@ -420,6 +423,18 @@ export function EditEventForm({ event }: EditEventFormProps) {
                 onUpload={(url) => updateField('cover_image_url', url)}
                 onRemove={() => updateField('cover_image_url', null)}
               />
+              <label className="mt-2 flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-stone-300"
+                  checked={formData.hide_title_on_hero}
+                  onChange={(e) => updateField('hide_title_on_hero', e.target.checked)}
+                />
+                <span>Hide event title overlay on the hero image</span>
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Turn this on when the cover already has the event/band name in it.
+              </p>
             </div>
 
             {/* Gallery */}

@@ -26,6 +26,7 @@ export interface Event {
   capacity: number | null;
   is_published: boolean;
   cover_image_url: string | null;
+  hide_title_on_hero: boolean;
   gallery_urls: string[];
   host_bio: string | null;
   host_bio_headline: string | null;

@@ -28,6 +28,7 @@ const updateEventSchema = z
     host_bio: z.string().max(2000).nullable(),
     host_bio_headline: z.string().max(200).nullable(),
     cover_image_url: z.string().url().nullable().optional(),
+    hide_title_on_hero: z.boolean().optional().default(false),
     gallery_urls: z.array(z.string().url()).optional(),
     save_the_date_image_url: z.string().url().nullable().optional(),
     save_the_date_text: z.string().max(2000).nullable().optional(),
@@ -67,6 +68,7 @@ export type UpdateEventInput = {
   host_bio: string | null;
   host_bio_headline: string | null;
   cover_image_url?: string | null;
+  hide_title_on_hero?: boolean;
   gallery_urls?: string[];
   save_the_date_image_url?: string | null;
   save_the_date_text?: string | null;

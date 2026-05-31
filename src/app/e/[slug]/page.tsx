@@ -117,14 +117,20 @@ export default async function EventPage({ params }: EventPageProps) {
               priority
               sizes="100vw"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 p-6 sm:p-8">
-              <div className="mx-auto max-w-3xl">
-                <h1 className="text-3xl font-bold text-white sm:text-4xl md:text-5xl">
-                  {event.title}
-                </h1>
-              </div>
-            </div>
+            {event.hide_title_on_hero ? (
+              <h1 className="sr-only">{event.title}</h1>
+            ) : (
+              <>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
+                <div className="absolute inset-x-0 bottom-0 p-6 sm:p-8">
+                  <div className="mx-auto max-w-3xl">
+                    <h1 className="text-3xl font-bold text-white sm:text-4xl md:text-5xl">
+                      {event.title}
+                    </h1>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <div className="bg-muted px-6 py-12 sm:px-8 sm:py-16">
