@@ -93,7 +93,7 @@ export function NotificationsForm({ event }: { event: Event }) {
             <Label>Marketing image</Label>
             <ImageUpload
               eventId={event.id}
-              type="cover"
+              type="notification"
               currentUrl={form.save_the_date_image_url}
               onUpload={(url) => update('save_the_date_image_url', url)}
               onRemove={() => update('save_the_date_image_url', null)}
@@ -154,7 +154,7 @@ export function NotificationsForm({ event }: { event: Event }) {
             <Label>Marketing image</Label>
             <ImageUpload
               eventId={event.id}
-              type="cover"
+              type="notification"
               currentUrl={form.invitation_image_url}
               onUpload={(url) => update('invitation_image_url', url)}
               onRemove={() => update('invitation_image_url', null)}

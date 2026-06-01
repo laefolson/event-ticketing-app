@@ -5,6 +5,8 @@ import { createServiceClient } from '@/lib/supabase/service';
 
 const COVER_WIDTH = 1200;
 const COVER_HEIGHT = 400;
+const NOTIFICATION_MAX_WIDTH = 1600;
+const NOTIFICATION_JPEG_QUALITY = 85;
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
@@ -45,9 +47,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (type !== 'cover' && type !== 'gallery') {
+  if (type !== 'cover' && type !== 'gallery' && type !== 'notification') {
     return NextResponse.json(
-      { error: 'Type must be "cover" or "gallery"' },
+      { error: 'Type must be "cover", "gallery", or "notification"' },
       { status: 400 }
     );
   }
@@ -92,6 +94,23 @@ export async function POST(request: NextRequest) {
 
     ext = 'webp';
     contentType = 'image/webp';
+  }
+
+  // Process notification images: cap width at 1600px, no crop, JPG out.
+  // JPG is chosen for broadest email-client compatibility (some clients —
+  // notably older Outlook builds — still fail on WebP).
+  if (type === 'notification') {
+    buffer = await sharp(buffer)
+      .rotate() // honor EXIF orientation
+      .resize({
+        width: NOTIFICATION_MAX_WIDTH,
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: NOTIFICATION_JPEG_QUALITY, mozjpeg: true })
+      .toBuffer() as Buffer<ArrayBuffer>;
+
+    ext = 'jpg';
+    contentType = 'image/jpeg';
   }
 
   const filename = `${type}-${Date.now()}.${ext}`;

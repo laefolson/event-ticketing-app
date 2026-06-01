@@ -858,7 +858,7 @@ export function NewEventWizard() {
                   <Label>Marketing image</Label>
                   <ImageUpload
                     eventId={tempEventId}
-                    type="cover"
+                    type="notification"
                     currentUrl={formData.save_the_date_image_url}
                     onUpload={(url) => updateField('save_the_date_image_url', url)}
                     onRemove={() => updateField('save_the_date_image_url', null)}
@@ -917,7 +917,7 @@ export function NewEventWizard() {
                   <Label>Marketing image</Label>
                   <ImageUpload
                     eventId={tempEventId}
-                    type="cover"
+                    type="notification"
                     currentUrl={formData.invitation_image_url}
                     onUpload={(url) => updateField('invitation_image_url', url)}
                     onRemove={() => updateField('invitation_image_url', null)}

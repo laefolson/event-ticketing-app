@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 
 interface ImageUploadProps {
   eventId: string;
-  type: 'cover' | 'gallery';
+  type: 'cover' | 'gallery' | 'notification';
   onUpload: (url: string) => void;
   currentUrl?: string | null;
   onRemove?: () => void;
