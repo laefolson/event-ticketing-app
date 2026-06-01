@@ -97,6 +97,21 @@ export default async function ContactDetailPage({
     };
   });
 
+  // Delete-impact summary: which events the contact has confirmed tickets
+  // for, split into upcoming vs past. tickets and invitation_logs stay (FKs
+  // are ON DELETE SET NULL), so this is informational — the warning is
+  // about losing the link from this person to those records.
+  const now = new Date();
+  const ticketEvents = eventHistory.filter(
+    (r) => r.role === 'Attendee' || r.role === 'RSVP'
+  );
+  const upcomingTicketEvents = ticketEvents
+    .filter((r) => new Date(r.event.date_start) > now)
+    .map((r) => ({ id: r.event.id, title: r.event.title, date_start: r.event.date_start }));
+  const pastTicketEvents = ticketEvents
+    .filter((r) => new Date(r.event.date_start) <= now)
+    .map((r) => ({ id: r.event.id, title: r.event.title, date_start: r.event.date_start }));
+
   // Message history: invitation_logs for this contact across all events.
   let messageHistory: LogRow[] = [];
   if (contactIds.length > 0 && eventIds.length > 0) {
@@ -132,7 +147,11 @@ export default async function ContactDetailPage({
         <p className="text-muted-foreground">{mc.email}</p>
       </div>
 
-      <ContactDetail contact={mc} />
+      <ContactDetail
+        contact={mc}
+        upcomingTicketEvents={upcomingTicketEvents}
+        pastTicketEvents={pastTicketEvents}
+      />
 
       <Card className="mt-6">
         <CardHeader>

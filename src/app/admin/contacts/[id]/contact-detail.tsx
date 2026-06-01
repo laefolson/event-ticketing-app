@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Trash2 } from 'lucide-react';
+import { Trash2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Card, CardContent, CardHeader, CardTitle,
@@ -16,8 +16,15 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader,
   DialogTitle, DialogTrigger, DialogClose,
 } from '@/components/ui/dialog';
+import { formatDate } from '@/lib/utils';
 import { updateMasterContact, deleteMasterContact } from '../actions';
 import type { MasterContact } from '@/types/database';
+
+export interface TicketEventSummary {
+  id: string;
+  title: string;
+  date_start: string;
+}
 
 const SOURCE_LABEL: Record<MasterContact['source'], string> = {
   manual: 'Manual',
@@ -27,7 +34,17 @@ const SOURCE_LABEL: Record<MasterContact['source'], string> = {
   rsvp: 'RSVP',
 };
 
-export function ContactDetail({ contact }: { contact: MasterContact }) {
+interface ContactDetailProps {
+  contact: MasterContact;
+  upcomingTicketEvents: TicketEventSummary[];
+  pastTicketEvents: TicketEventSummary[];
+}
+
+export function ContactDetail({
+  contact,
+  upcomingTicketEvents,
+  pastTicketEvents,
+}: ContactDetailProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [deleting, startDelete] = useTransition();
@@ -174,10 +191,46 @@ export function ContactDetail({ contact }: { contact: MasterContact }) {
                 <DialogHeader>
                   <DialogTitle>Delete this contact?</DialogTitle>
                   <DialogDescription>
-                    The contact will be removed from the master list. Any per-event records
-                    linked to them will also be removed. This cannot be undone.
+                    The contact will be removed from the master list and from each event&rsquo;s contacts list. Their tickets and any sent messages stay (you&rsquo;ll just no longer see them tied to this person in the master list). This cannot be undone.
                   </DialogDescription>
                 </DialogHeader>
+
+                {upcomingTicketEvents.length > 0 && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">
+                          {upcomingTicketEvents.length === 1
+                            ? 'Active ticket for an upcoming event:'
+                            : `Active tickets for ${upcomingTicketEvents.length} upcoming events:`}
+                        </p>
+                        <ul className="mt-1 list-disc list-inside space-y-0.5">
+                          {upcomingTicketEvents.map((e) => (
+                            <li key={e.id}>
+                              {e.title} <span className="opacity-80">· {formatDate(e.date_start, 'MMM d, yyyy')}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="mt-2 text-xs opacity-90">
+                          Tickets remain valid for entry. Future invitations to those events won&rsquo;t include this person unless you add them back.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {pastTicketEvents.length > 0 && (
+                  <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+                    <p className="font-medium">
+                      Attended {pastTicketEvents.length} past event{pastTicketEvents.length === 1 ? '' : 's'}.
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Attendee history and archive metrics stay accurate, but the link from those tickets back to this contact is severed.
+                    </p>
+                  </div>
+                )}
+
                 <DialogFooter>
                   <DialogClose asChild>
                     <Button type="button" variant="ghost" disabled={deleting}>Cancel</Button>
