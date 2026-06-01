@@ -308,3 +308,170 @@ export async function toggleCheckIn(
 
   return { success: true };
 }
+
+// ── Scan-to-check-in by ticket_code ─────────────────────────────────────
+
+const checkInByCodeSchema = z.object({
+  eventId: z.string().uuid('Invalid event'),
+  // Ticket codes are short alphanum (TIX-XXXXXXXX) or legacy UUIDs; accept
+  // anything sensible-looking up to a reasonable length.
+  code: z.string().trim().min(1).max(120),
+});
+
+export interface CheckInByCodeResult {
+  ticketId: string;
+  attendeeName: string;
+  tierName: string;
+  quantity: number;
+  alreadyCheckedIn: boolean;
+}
+
+export interface TicketLookupResult {
+  ticketId: string;
+  attendeeName: string;
+  tierName: string;
+  quantity: number;
+  status: 'confirmed' | 'checked_in' | 'refunded' | 'cancelled' | 'pending';
+}
+
+/**
+ * Read-only sister of checkInByCode — fetches the ticket without changing
+ * its status, so the scanner can show a confirmation prompt before the
+ * actual check-in. Returns the same kinds of errors as checkInByCode.
+ */
+export async function lookupTicketByCode(
+  eventId: string,
+  code: string
+): Promise<ActionResponse<TicketLookupResult>> {
+  const parsed = checkInByCodeSchema.safeParse({ eventId, code });
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'You must be logged in.' };
+  }
+
+  const { data: ticket, error: fetchError } = await supabase
+    .from('tickets')
+    .select(
+      'id, status, attendee_name, quantity, ticket_tiers!inner(name)'
+    )
+    .eq('event_id', parsed.data.eventId)
+    .eq('ticket_code', parsed.data.code)
+    .maybeSingle();
+
+  if (fetchError) {
+    return { success: false, error: fetchError.message };
+  }
+  if (!ticket) {
+    return { success: false, error: 'No ticket with that code for this event.' };
+  }
+  if (ticket.status === 'refunded') {
+    return { success: false, error: 'This ticket was refunded.' };
+  }
+  if (ticket.status === 'cancelled' || ticket.status === 'pending') {
+    return { success: false, error: `Ticket is ${ticket.status} — can't check in.` };
+  }
+
+  const tierName =
+    (Array.isArray(ticket.ticket_tiers)
+      ? ticket.ticket_tiers[0]?.name
+      : (ticket.ticket_tiers as { name: string } | null)?.name) ?? 'Ticket';
+
+  return {
+    success: true,
+    data: {
+      ticketId: ticket.id as string,
+      attendeeName: ticket.attendee_name as string,
+      tierName,
+      quantity: ticket.quantity as number,
+      status: ticket.status as TicketLookupResult['status'],
+    },
+  };
+}
+
+export async function checkInByCode(
+  eventId: string,
+  code: string
+): Promise<ActionResponse<CheckInByCodeResult>> {
+  const parsed = checkInByCodeSchema.safeParse({ eventId, code });
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
+  }
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'You must be logged in.' };
+  }
+
+  const { data: ticket, error: fetchError } = await supabase
+    .from('tickets')
+    .select(
+      'id, status, attendee_name, quantity, ticket_tiers!inner(name)'
+    )
+    .eq('event_id', parsed.data.eventId)
+    .eq('ticket_code', parsed.data.code)
+    .maybeSingle();
+
+  if (fetchError) {
+    return { success: false, error: fetchError.message };
+  }
+  if (!ticket) {
+    return { success: false, error: 'No ticket with that code for this event.' };
+  }
+  if (ticket.status === 'refunded') {
+    return { success: false, error: 'This ticket was refunded.' };
+  }
+  if (ticket.status === 'cancelled' || ticket.status === 'pending') {
+    return { success: false, error: `Ticket is ${ticket.status} — can't check in.` };
+  }
+
+  const tierName =
+    (Array.isArray(ticket.ticket_tiers)
+      ? ticket.ticket_tiers[0]?.name
+      : (ticket.ticket_tiers as { name: string } | null)?.name) ?? 'Ticket';
+
+  if (ticket.status === 'checked_in') {
+    return {
+      success: true,
+      data: {
+        ticketId: ticket.id as string,
+        attendeeName: ticket.attendee_name as string,
+        tierName,
+        quantity: ticket.quantity as number,
+        alreadyCheckedIn: true,
+      },
+    };
+  }
+
+  // confirmed → checked_in
+  const { error: updateError } = await supabase
+    .from('tickets')
+    .update({ status: 'checked_in', checked_in_at: new Date().toISOString() })
+    .eq('id', ticket.id);
+  if (updateError) {
+    return { success: false, error: updateError.message };
+  }
+
+  return {
+    success: true,
+    data: {
+      ticketId: ticket.id as string,
+      attendeeName: ticket.attendee_name as string,
+      tierName,
+      quantity: ticket.quantity as number,
+      alreadyCheckedIn: false,
+    },
+  };
+}

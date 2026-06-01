@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, QrCode, CheckCircle2, Undo2, Download, Check, Minus } from 'lucide-react';
+import { Plus, Search, CheckCircle2, Undo2, Download, Check, Minus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatPrice } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
+import { ScanDialog } from './scan-dialog';
 import { createManualTicket, toggleCheckIn } from './actions';
 import type { PaymentMethod, Ticket, TicketTier } from '@/types/database';
 
@@ -324,6 +325,7 @@ export function AttendeesManager({
           </span>
         </h2>
         <div className="flex items-center gap-2">
+          <ScanDialog eventId={eventId} />
           <Button variant="outline" onClick={handleExportCsv} disabled={tickets.length === 0}>
             <Download className="mr-2 h-4 w-4" />
             Export CSV
@@ -357,12 +359,6 @@ export function AttendeesManager({
           </div>
         </CardContent>
       </Card>
-
-      {/* QR placeholder */}
-      <div className="flex items-center gap-3 rounded-lg border border-dashed p-4 text-muted-foreground">
-        <QrCode className="h-5 w-5 shrink-0" />
-        <span className="text-sm">QR code scanning &mdash; coming in Phase 2</span>
-      </div>
 
       {tickets.length === 0 ? (
         /* Empty state */
