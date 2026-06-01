@@ -12,6 +12,7 @@ const client = twilio(
 interface SendSmsInput {
   to: string;
   body: string;
+  mediaUrl?: string | null;
 }
 
 interface SendSmsResult {
@@ -23,6 +24,7 @@ interface SendSmsResult {
 export async function sendSms({
   to,
   body,
+  mediaUrl,
 }: SendSmsInput): Promise<SendSmsResult> {
   const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
 
@@ -35,6 +37,7 @@ export async function sendSms({
       to,
       messagingServiceSid,
       body,
+      ...(mediaUrl ? { mediaUrl: [mediaUrl] } : {}),
     });
 
     return { success: true, messageId: message.sid };
@@ -44,4 +47,25 @@ export async function sendSms({
       error: err instanceof Error ? err.message : 'Failed to send SMS',
     };
   }
+}
+
+/**
+ * Returns an MMS-friendly variant of a Supabase Storage public URL by
+ * routing through the `/render/image/public/` transform endpoint with a
+ * width + quality cap. Twilio's MMS guidance is ≤600 KB per attachment;
+ * an 800px-wide JPEG at quality 75 is typically 80–150 KB.
+ *
+ * Requires Supabase Image Transformations to be enabled on the project
+ * (Pro plan and above). On projects without transformations, this URL
+ * returns an error — only call this from prod-only code paths or accept
+ * that dev MMS will arrive without an image.
+ *
+ * Passes through non-Supabase URLs unchanged.
+ */
+export function toMmsImageUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const marker = '/storage/v1/object/public/';
+  if (!url.includes(marker)) return url;
+  const transformed = url.replace(marker, '/storage/v1/render/image/public/');
+  return `${transformed}?width=800&quality=75`;
 }

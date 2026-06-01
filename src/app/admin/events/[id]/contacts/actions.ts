@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { formatDate, getBaseUrl } from '@/lib/utils';
 import { sendEmail } from '@/lib/resend';
-import { sendSms } from '@/lib/twilio';
+import { sendSms, toMmsImageUrl } from '@/lib/twilio';
 import { InvitationEmail } from '@/emails/invitation-email';
 import { SaveTheDateEmail } from '@/emails/save-the-date-email';
 import type { ActionResponse } from '@/types/actions';
@@ -612,11 +612,14 @@ export async function sendInvitations(
       }
     }
 
-    // Send SMS if channel is sms or both
+    // Send SMS if channel is sms or both. Attach the same marketing
+    // image as the email (downscaled by Supabase Storage transforms so
+    // it stays under MMS size limits).
     if ((channel === 'sms' || channel === 'both') && phone) {
       const smsResult = await sendSms({
         to: phone,
         body: smsBody,
+        mediaUrl: toMmsImageUrl(invitationImage),
       });
 
       await supabase.from('invitation_logs').insert({
@@ -783,11 +786,14 @@ export async function sendSaveTheDates(
       }
     }
 
-    // Send SMS if channel is sms or both
+    // Send SMS if channel is sms or both. Attach the save-the-date
+    // marketing image (downscaled by Supabase Storage transforms so it
+    // stays under MMS size limits).
     if ((channel === 'sms' || channel === 'both') && phone) {
       const smsResult = await sendSms({
         to: phone,
         body: smsBody,
+        mediaUrl: toMmsImageUrl(event.save_the_date_image_url),
       });
 
       await supabase.from('invitation_logs').insert({
