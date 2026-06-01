@@ -21,6 +21,7 @@
 | 1.10 | May 2026 | Add Ticket flow (renamed from Walk-in). `tickets.payment_method` + `payment_note` columns. Admin records manual sales (Cash / Venmo / PayPal / Check / Other), comps, or reduced-price tickets and can deliver the ticket by email and/or SMS in the same submit. Master contact + per-event join row are synced via the shared helper with `source='manual'`. Attendees table gains a Payment column and archive event detail gains a Payment Breakdown card grouped by method. |
 | 1.11 | May 2026 | `events.hide_title_on_hero` column — per-event toggle to suppress the title text overlay on the public hero image (sr-only `h1` kept for SEO/a11y). Public hero now uses an aspect-ratio container so the 1200×400 cover doesn't get top/bottom-cropped on wide browsers. Refunded tickets stay visible on the attendees tab (dimmed row + destructive "Refunded" badge, check-in disabled, excluded from the expected counter). Admin dashboard replaced its total-stats cards with two per-event lists (Upcoming + Past) showing tickets sold and revenue per row. Bug fixes: event datetimes are now stored in UTC after explicit Mountain Time conversion (was being parsed as server-local UTC on Vercel, shifting the displayed time by ~6h); manual Add Ticket now sets `ticket_code` explicitly so it doesn't fall through to a stale UUID DB default. |
 | 1.12 | Jun 2026 | Event times rework: `events.date_end` is now nullable (events without a published end time hide the end portion); `start_time_label` lets the primary start time carry a label like "Reception"; new `additional_times` jsonb column stores extra labeled time slots on the same date (e.g. "Reception at 6 PM" + "Concert at 7 PM") rendered sorted by clock time on the public page. New `events.description_heading` field — admin types the heading rendered above the description on the public page (falls back to "Event Details"). Dropped `events.host_bio` and `events.host_bio_headline` and the matching `default_host_bio` app_settings row; admins fold bios into the description. Public event page polish: ticket price range moved from the hero overlay into the Event Details section, the YouTube embed moved below the gallery, tier cards are now clickable (non-sold-out ones link straight to checkout/RSVP). Admin date/time pickers replaced with a shadcn Calendar popover and the browser-native `<input type="time">`. |
+| 1.13 | Jun 2026 | QR scan check-in at the door (Phase 2 backlog item now shipped). New **Scan** button on the attendees tab opens a camera viewfinder powered by `qr-scanner` that reads the ticket QR codes the app already emits for events with `ticket_qr_enabled`. A scan calls a new read-only `lookupTicketByCode` action and surfaces a confirmation prompt — attendee name, tier, and quantity in large type with mobile-sized **Cancel / Check In** buttons — so the door operator can confirm before flipping the row to `checked_in` via `checkInByCode`. Success shows a green banner and auto-resumes scanning; refunded / cancelled / pending / wrong-event / already-checked-in scans each get their own Got-it prompt with an explanatory message. Works on any modern mobile browser over HTTPS. |
 
 ---
 
@@ -462,8 +463,7 @@ Optional — most events run on honor system; check-in is not required.
 - **Payment column** on the attendees table shows the method + amount (e.g., `Venmo · $25`, `Comp`); the optional payment note is shown beneath the amount.
 - **SMS opt-in columns:** two inline columns show whether each attendee opted in to SMS event updates and/or marketing (matched by normalized phone number against `sms_consents` records)
 - **Export CSV:** downloads full attendee list as `attendees-export.csv` with columns: Name, Email, Phone, Tier, Qty, Amount Paid, Payment Method, Payment Note, Status, Purchased, SMS Event Opt-In, SMS Marketing Opt-In
-
-> Phase 2: QR code scanning via device camera
+- **Scan**: opens a camera viewfinder dialog (uses `qr-scanner`, rear camera preferred) that reads the ticket QR codes generated for events with `ticket_qr_enabled`. A scan calls `lookupTicketByCode` and shows a confirmation prompt with attendee name, tier, and quantity in large type plus mobile-sized **Cancel / Check In** buttons. Confirming runs `checkInByCode` (confirmed → checked_in), shows a green success banner, and resumes the camera for the next person. Refunded / pending / cancelled / wrong-event / already-checked-in scans each show their own prompt with a single Got-it button. A single QR represents a whole ticket row, so a `quantity = N` ticket checks in as N people in one scan; partial-row check-in isn't supported.
 
 ---
 
@@ -874,7 +874,7 @@ All email templates built in **Resend React Email** format. Must be responsive a
 
 - [x] QR code image on ticket (per-event toggle; encodes verification URL)
 - [ ] Apple Wallet `.pkpass` ticket generation with QR code
-- [ ] QR scan check-in at the door via device camera
+- [x] QR scan check-in at the door via device camera
 - [ ] Scheduled invitation sending (future date/time)
 - [ ] Automated reminder emails 48hrs before event
 - [ ] Waitlist — auto-notify on cancellation
