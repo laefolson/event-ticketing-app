@@ -267,7 +267,9 @@ export default async function EventPage({ params }: EventPageProps) {
         {/* Event Details */}
         {(event.description || tiers.length > 0) && (
           <section className="border-b py-8">
-            <h2 className="mb-4 text-xl font-semibold">Event Details</h2>
+            <h2 className="mb-4 text-xl font-semibold">
+              {event.description_heading || 'Event Details'}
+            </h2>
             {tiers.length > 0 && (
               <p className="mb-4 text-base">
                 <span className="text-muted-foreground">Tickets:</span>{' '}
@@ -403,16 +405,6 @@ export default async function EventPage({ params }: EventPageProps) {
                 />
               </div>
             </div>
-          </section>
-        )}
-
-        {/* Host bio */}
-        {event.host_bio && (
-          <section className="border-b py-8">
-            <h2 className="mb-4 text-xl font-semibold">{event.host_bio_headline || 'About the Host'}</h2>
-            <p className="text-muted-foreground whitespace-pre-line leading-relaxed">
-              {event.host_bio}
-            </p>
           </section>
         )}
 

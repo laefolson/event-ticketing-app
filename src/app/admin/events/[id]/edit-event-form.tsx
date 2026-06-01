@@ -69,8 +69,7 @@ interface FormData {
   description: string;
   location_name: string;
   location_address: string;
-  host_bio: string;
-  host_bio_headline: string;
+  description_heading: string;
   cover_image_url: string | null;
   hide_title_on_hero: boolean;
   gallery_urls: string[];
@@ -102,8 +101,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
     description: event.description ?? '',
     location_name: event.location_name ?? '',
     location_address: event.location_address ?? '',
-    host_bio: event.host_bio ?? '',
-    host_bio_headline: event.host_bio_headline ?? 'About the Host',
+    description_heading: event.description_heading ?? '',
     cover_image_url: event.cover_image_url ?? null,
     hide_title_on_hero: event.hide_title_on_hero,
     gallery_urls: event.gallery_urls ?? [],
@@ -188,10 +186,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
       description: formData.description.trim() || null,
       location_name: formData.location_name.trim() || null,
       location_address: formData.location_address.trim() || null,
-      host_bio: formData.host_bio.trim() || null,
-      host_bio_headline: formData.host_bio_headline.trim() && formData.host_bio_headline.trim() !== 'About the Host'
-        ? formData.host_bio_headline.trim()
-        : null,
+      description_heading: formData.description_heading.trim() || null,
       cover_image_url: formData.cover_image_url,
       hide_title_on_hero: formData.hide_title_on_hero,
       gallery_urls: formData.gallery_urls,
@@ -408,6 +403,20 @@ export function EditEventForm({ event }: EditEventFormProps) {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="description_heading">Description Heading</Label>
+              <Input
+                id="description_heading"
+                placeholder="Event Details"
+                value={formData.description_heading}
+                onChange={(e) => updateField('description_heading', e.target.value)}
+                maxLength={200}
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional — replaces the default &ldquo;Event Details&rdquo; heading above the description.
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Textarea
                 id="description"
@@ -438,28 +447,6 @@ export function EditEventForm({ event }: EditEventFormProps) {
                   onChange={(e) => updateField('location_address', e.target.value)}
                 />
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="host_bio_headline">Host Section Headline</Label>
-              <Input
-                id="host_bio_headline"
-                placeholder="About the Host"
-                value={formData.host_bio_headline}
-                onChange={(e) => updateField('host_bio_headline', e.target.value)}
-                maxLength={200}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="host_bio">Host Bio</Label>
-              <Textarea
-                id="host_bio"
-                placeholder="A short bio about the host..."
-                rows={3}
-                value={formData.host_bio}
-                onChange={(e) => updateField('host_bio', e.target.value)}
-              />
             </div>
 
             <div className="space-y-2">

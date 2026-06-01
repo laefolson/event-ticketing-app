@@ -151,8 +151,7 @@ RLS must be enabled on all tables.
 | cover_image_url | text | Supabase Storage URL |
 | hide_title_on_hero | boolean | default false; when true, the public event page hides the title text overlay (and its dark gradient) on the hero image — for covers that already include the event/band name. A screen-reader-only h1 is still rendered for accessibility and SEO. |
 | gallery_urls | text[] | up to 6 additional images |
-| host_bio | text | pre-fillable from settings default |
-| host_bio_headline | text | nullable; custom heading for host bio section on public page (e.g. "About the Band"); defaults to "About the Host" when null |
+| description_heading | text | nullable; customizes the heading rendered above the event description on the public page. Defaults to "Event Details" when null. (Replaces the dropped `host_bio` and `host_bio_headline` columns — bios now live in the description itself.) |
 | save_the_date_image_url | text | nullable; optional image used in save-the-date emails |
 | save_the_date_text | text | nullable; optional custom body text for save-the-date messages |
 | video_url | text | nullable; optional YouTube URL (youtube.com/watch?v=… or youtu.be/…) rendered as a responsive 16:9 embed on the public event page |
@@ -307,7 +306,7 @@ RLS: service-role only (records written server-side during checkout).
 | `/admin/archive` | All archived events |
 | `/admin/archive/[id]` | Archived event detail — attendees, revenue, stats |
 | `/admin/team` | Manage team members (admin only) |
-| `/admin/settings` | Venue name (used in email headers/footers), integration status (Stripe, Twilio, Resend — read-only, managed via env vars), default host bio (admin only) |
+| `/admin/settings` | Venue name (used in email headers/footers), integration status (Stripe, Twilio, Resend — read-only, managed via env vars) — admin only |
 
 ---
 
@@ -319,7 +318,7 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
 
 **Step 1 — Basics:** title, event type, date/time (start + end), capacity
 
-**Step 2 — Details:** markdown description, location name + address, cover image, up to 6 gallery photos, host bio section headline (defaults to "About the Host"; customizable per event, e.g. "About the Band"), host bio (pre-fillable from settings default)
+**Step 2 — Details:** description heading (optional, defaults to "Event Details"), markdown description, location name + address, cover image, up to 6 gallery photos, optional YouTube video URL
 
 > **Cover image processing:** Uploaded cover images are automatically resized/cropped to 1200×400 (3:1 aspect ratio) using Sharp. Crop position is horizontally centered, vertically at 20% from top. Output format is WebP at quality 85. Gallery images are uploaded as-is.
 
@@ -342,7 +341,7 @@ Multi-step wizard at `/admin/events/new`. A cancel button is available on every 
 
 - Not search-indexed (`noindex` meta tag)
 - Returns 404 if `link_active = false`
-- Sections: hero (cover image, title, date, location), description, optional YouTube video embed (16:9, rendered only when `video_url` is set and parseable), tier cards, map, host bio (heading from `host_bio_headline` or "About the Host"), FAQ accordion, social share buttons
+- Sections: hero (cover image, title, date, location), description (heading from `description_heading` or "Event Details"), tier cards, gallery, optional YouTube video embed (16:9, rendered only when `video_url` is set and parseable), map, FAQ accordion, social share buttons
 - Tier cards show price, description, quantity remaining, and limit notice if `max_per_contact` is set
 - Sold out state when `quantity_sold = quantity_total`
 - Sticky footer CTA: "Get Tickets" or "RSVP Now"

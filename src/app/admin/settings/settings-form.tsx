@@ -5,18 +5,15 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { updateDefaultHostBio, updateVenueName } from './actions';
+import { updateVenueName } from './actions';
 
 interface SettingsFormProps {
   venueName: string;
-  defaultHostBio: string;
 }
 
-export function SettingsForm({ venueName: initialVenueName, defaultHostBio }: SettingsFormProps) {
+export function SettingsForm({ venueName: initialVenueName }: SettingsFormProps) {
   const router = useRouter();
   const [venueNameValue, setVenueNameValue] = useState(initialVenueName);
-  const [hostBioValue, setHostBioValue] = useState(defaultHostBio);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -26,27 +23,16 @@ export function SettingsForm({ venueName: initialVenueName, defaultHostBio }: Se
     setSuccess(false);
     setPending(true);
 
-    const [venueResult, bioResult] = await Promise.all([
-      updateVenueName(venueNameValue),
-      updateDefaultHostBio(hostBioValue),
-    ]);
-
+    const result = await updateVenueName(venueNameValue);
     setPending(false);
 
-    if (!venueResult.success) {
-      setError(venueResult.error ?? 'Failed to save venue name.');
-      return;
-    }
-
-    if (!bioResult.success) {
-      setError(bioResult.error ?? 'Failed to save host bio.');
+    if (!result.success) {
+      setError(result.error ?? 'Failed to save venue name.');
       return;
     }
 
     setSuccess(true);
     router.refresh();
-
-    // Clear success message after 3 seconds
     setTimeout(() => setSuccess(false), 3000);
   }
 
@@ -63,21 +49,6 @@ export function SettingsForm({ venueName: initialVenueName, defaultHostBio }: Se
         />
         <p className="text-xs text-muted-foreground">
           Used in email headers and footers. {venueNameValue.length}/200 characters
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="host-bio">Default Host Bio</Label>
-        <Textarea
-          id="host-bio"
-          value={hostBioValue}
-          onChange={(e) => setHostBioValue(e.target.value)}
-          placeholder="Enter a default bio for event hosts..."
-          rows={5}
-          maxLength={2000}
-        />
-        <p className="text-xs text-muted-foreground">
-          Pre-fills the host bio field when creating new events. {hostBioValue.length}/2000 characters
         </p>
       </div>
 

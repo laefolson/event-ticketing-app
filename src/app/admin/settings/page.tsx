@@ -41,7 +41,7 @@ export default async function SettingsPage() {
     connected: !!process.env[integration.envKey],
   }));
 
-  // Fetch venue name and default host bio
+  // Fetch venue name
   const { data: venueNameRow } = await supabase
     .from('app_settings')
     .select('value')
@@ -49,14 +49,6 @@ export default async function SettingsPage() {
     .single();
 
   const venueName: string = (venueNameRow?.value as string) || 'The Barn';
-
-  const { data: hostBioRow } = await supabase
-    .from('app_settings')
-    .select('value')
-    .eq('key', 'default_host_bio')
-    .single();
-
-  const defaultHostBio: string = (hostBioRow?.value as string) || '';
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
@@ -91,11 +83,11 @@ export default async function SettingsPage() {
         <Card>
           <CardHeader>
             <CardDescription>
-              Configure your venue name and default host bio for new events.
+              Configure your venue name (used in email headers and footers).
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <SettingsForm venueName={venueName} defaultHostBio={defaultHostBio} />
+            <SettingsForm venueName={venueName} />
           </CardContent>
         </Card>
       </section>

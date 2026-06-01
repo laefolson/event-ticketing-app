@@ -39,8 +39,7 @@ const createEventSchema = z
     description: z.string().max(5000).nullable(),
     location_name: z.string().max(200).nullable(),
     location_address: z.string().max(500).nullable(),
-    host_bio: z.string().max(2000).nullable(),
-    host_bio_headline: z.string().max(200).nullable(),
+    description_heading: z.string().max(200).nullable().optional(),
     cover_image_url: z.string().url().nullable().optional(),
     hide_title_on_hero: z.boolean().optional().default(false),
     gallery_urls: z.array(z.string().url()).optional(),
@@ -83,8 +82,7 @@ export type CreateEventInput = {
   description: string | null;
   location_name: string | null;
   location_address: string | null;
-  host_bio: string | null;
-  host_bio_headline: string | null;
+  description_heading?: string | null;
   cover_image_url?: string | null;
   hide_title_on_hero?: boolean;
   gallery_urls?: string[];
@@ -269,15 +267,3 @@ export async function createTiersForEvent(
 }
 
 // --- Default host bio ---
-
-export async function getDefaultHostBio(): Promise<string | null> {
-  const supabase = await createClient();
-
-  const { data } = await supabase
-    .from('app_settings')
-    .select('value')
-    .eq('key', 'default_host_bio')
-    .single();
-
-  return (data?.value as string) || null;
-}
