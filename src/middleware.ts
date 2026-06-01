@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
-const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
+const SESSION_TIMEOUT_MS = 12 * 60 * 60 * 1000; // 12 hours of inactivity
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
@@ -95,10 +95,12 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    // Update last_activity timestamp
+    // Update last_activity timestamp. `secure` must be false in dev — over
+    // HTTP browsers silently drop Secure cookies, which would mean the
+    // timeout cookie never persists locally and the timeout never fires.
     response.cookies.set('last_activity', String(Date.now()), {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
     });
