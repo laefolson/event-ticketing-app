@@ -28,7 +28,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
         <div className="container mx-auto flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-6">
             <Link href="/admin" className="text-lg font-bold">
-              Barn Events
+              Blue Barn Events
             </Link>
             <div className="hidden sm:flex items-center gap-4 text-sm">
               <Link
