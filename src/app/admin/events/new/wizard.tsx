@@ -78,6 +78,12 @@ interface FormData {
   gallery_urls: string[];
   save_the_date_image_url: string | null;
   save_the_date_text: string;
+  save_the_date_intro_text: string;
+  save_the_date_sms_body: string;
+  invitation_intro_text: string;
+  invitation_image_url: string | null;
+  invitation_after_image_text: string;
+  invitation_sms_body: string;
   ticket_qr_enabled: boolean;
   video_url: string;
   tiers: TierFormData[];
@@ -96,7 +102,7 @@ const EVENT_TYPE_OPTIONS: { value: EventType; label: string }[] = [
 const STEPS = [
   { number: 1, label: 'Basics' },
   { number: 2, label: 'Details' },
-  { number: 3, label: 'Save the Date' },
+  { number: 3, label: 'Notifications' },
   { number: 4, label: 'Tiers' },
   { number: 5, label: 'FAQ' },
   { number: 6, label: 'Review' },
@@ -141,6 +147,12 @@ export function NewEventWizard() {
     gallery_urls: [],
     save_the_date_image_url: null,
     save_the_date_text: '',
+    save_the_date_intro_text: '',
+    save_the_date_sms_body: '',
+    invitation_intro_text: '',
+    invitation_image_url: null,
+    invitation_after_image_text: '',
+    invitation_sms_body: '',
     ticket_qr_enabled: false,
     video_url: '',
     tiers: [],
@@ -393,6 +405,12 @@ export function NewEventWizard() {
       gallery_urls: formData.gallery_urls.length > 0 ? formData.gallery_urls : undefined,
       save_the_date_image_url: formData.save_the_date_image_url || null,
       save_the_date_text: formData.save_the_date_text.trim() || null,
+      save_the_date_intro_text: formData.save_the_date_intro_text.trim() || null,
+      save_the_date_sms_body: formData.save_the_date_sms_body.trim() || null,
+      invitation_intro_text: formData.invitation_intro_text.trim() || null,
+      invitation_image_url: formData.invitation_image_url || null,
+      invitation_after_image_text: formData.invitation_after_image_text.trim() || null,
+      invitation_sms_body: formData.invitation_sms_body.trim() || null,
       video_url: formData.video_url.trim() || null,
       faq: formData.faq.length > 0
         ? formData.faq.map((p) => ({ question: p.question.trim(), answer: p.answer.trim() }))
@@ -436,7 +454,7 @@ export function NewEventWizard() {
   const stepTitles: Record<number, { title: string; desc: string }> = {
     1: { title: 'Basics', desc: 'Event name, type, dates, and capacity.' },
     2: { title: 'Details', desc: 'Description, location, and images.' },
-    3: { title: 'Save the Date', desc: 'Upload an image and add text for save-the-date messages (optional).' },
+    3: { title: 'Notifications', desc: 'Customize save-the-date and invitation messages (all fields optional — defaults are used when blank).' },
     4: { title: 'Ticket Tiers', desc: 'Set up your ticket options and pricing.' },
     5: { title: 'FAQ', desc: 'Add frequently asked questions (optional).' },
     6: { title: 'Review & Publish', desc: 'Review everything before saving.' },
@@ -809,35 +827,133 @@ export function NewEventWizard() {
             </div>
           )}
 
-          {/* Step 3: Save the Date */}
+          {/* Step 3: Notifications */}
           {step === 3 && (
-            <div className="space-y-4">
+            <div className="space-y-6">
               <p className="text-muted-foreground text-sm">
-                This step is optional. Upload an image and add text to include in save-the-date messages sent to contacts.
+                Customize the messages that go out. Anything left blank uses the default copy.
+                You can revisit this anytime from the Notifications tab on the event.
               </p>
 
-              <div className="space-y-2">
-                <Label>Save the Date Image</Label>
-                <ImageUpload
-                  eventId={tempEventId}
-                  type="cover"
-                  currentUrl={formData.save_the_date_image_url}
-                  onUpload={(url) => updateField('save_the_date_image_url', url)}
-                  onRemove={() => updateField('save_the_date_image_url', null)}
-                  contain
-                />
+              {/* Save the Date */}
+              <div className="space-y-4 rounded-lg border p-4">
+                <div>
+                  <h3 className="text-base font-semibold">Save the Date</h3>
+                  <p className="text-muted-foreground text-xs">Email + SMS sent before invitations go out.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="std_intro">Intro text (after the greeting)</Label>
+                  <Textarea
+                    id="std_intro"
+                    placeholder="Default: Mark your calendar for [event]. More details coming soon!"
+                    rows={2}
+                    value={formData.save_the_date_intro_text}
+                    onChange={(e) => updateField('save_the_date_intro_text', e.target.value)}
+                    maxLength={2000}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Marketing image</Label>
+                  <ImageUpload
+                    eventId={tempEventId}
+                    type="cover"
+                    currentUrl={formData.save_the_date_image_url}
+                    onUpload={(url) => updateField('save_the_date_image_url', url)}
+                    onRemove={() => updateField('save_the_date_image_url', null)}
+                    contain
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="save_the_date_text">Text after the image</Label>
+                  <Textarea
+                    id="save_the_date_text"
+                    placeholder="Add any extra details for the save-the-date message..."
+                    rows={3}
+                    value={formData.save_the_date_text}
+                    onChange={(e) => updateField('save_the_date_text', e.target.value)}
+                    maxLength={2000}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="std_sms">SMS body</Label>
+                  <Textarea
+                    id="std_sms"
+                    placeholder="Default: Save the date! [event] on [date]. More details coming soon."
+                    rows={2}
+                    value={formData.save_the_date_sms_body}
+                    onChange={(e) => updateField('save_the_date_sms_body', e.target.value)}
+                    maxLength={1200}
+                  />
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="save_the_date_text">Additional Text</Label>
-                <Textarea
-                  id="save_the_date_text"
-                  placeholder="Add any extra details for the save-the-date message..."
-                  rows={4}
-                  value={formData.save_the_date_text}
-                  onChange={(e) => updateField('save_the_date_text', e.target.value)}
-                  maxLength={2000}
-                />
+              {/* Invitation */}
+              <div className="space-y-4 rounded-lg border p-4">
+                <div>
+                  <h3 className="text-base font-semibold">Invitation</h3>
+                  <p className="text-muted-foreground text-xs">
+                    Button label is automatic: &ldquo;RSVP&rdquo; for free events,
+                    &ldquo;View Event &amp; Purchase Tickets&rdquo; otherwise.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="inv_intro">Intro text (after the greeting)</Label>
+                  <Textarea
+                    id="inv_intro"
+                    placeholder="Default: We'd love for you to join us at [event]."
+                    rows={2}
+                    value={formData.invitation_intro_text}
+                    onChange={(e) => updateField('invitation_intro_text', e.target.value)}
+                    maxLength={2000}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Marketing image</Label>
+                  <ImageUpload
+                    eventId={tempEventId}
+                    type="cover"
+                    currentUrl={formData.invitation_image_url}
+                    onUpload={(url) => updateField('invitation_image_url', url)}
+                    onRemove={() => updateField('invitation_image_url', null)}
+                    contain
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Falls back to the event cover image if left blank.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="inv_after">Text below the image</Label>
+                  <Textarea
+                    id="inv_after"
+                    placeholder="Optional copy between the image and the button."
+                    rows={3}
+                    value={formData.invitation_after_image_text}
+                    onChange={(e) => updateField('invitation_after_image_text', e.target.value)}
+                    maxLength={2000}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="inv_sms">SMS body</Label>
+                  <Textarea
+                    id="inv_sms"
+                    placeholder="Default: You're invited to [event] on [date]! View details:"
+                    rows={2}
+                    value={formData.invitation_sms_body}
+                    onChange={(e) => updateField('invitation_sms_body', e.target.value)}
+                    maxLength={1200}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    The event URL is appended automatically.
+                  </p>
+                </div>
               </div>
 
               {error && <p className="text-sm text-destructive">{error}</p>}
@@ -1123,22 +1239,61 @@ export function NewEventWizard() {
                 </div>
               </div>
 
-              {/* Save the Date summary */}
-              {(formData.save_the_date_image_url || formData.save_the_date_text) && (
+              {/* Notifications summary */}
+              {(formData.save_the_date_image_url ||
+                formData.save_the_date_text ||
+                formData.save_the_date_intro_text ||
+                formData.save_the_date_sms_body ||
+                formData.invitation_intro_text ||
+                formData.invitation_image_url ||
+                formData.invitation_after_image_text ||
+                formData.invitation_sms_body) && (
                 <div className="space-y-2">
-                  <h3 className="text-sm font-semibold uppercase text-muted-foreground tracking-wide">Save the Date</h3>
-                  <div className="text-sm space-y-1">
-                    {formData.save_the_date_image_url && (
-                      <div className="relative h-32 w-48 overflow-hidden rounded-md border">
-                        <Image src={formData.save_the_date_image_url} alt="Save the Date" fill className="object-cover" />
+                  <h3 className="text-sm font-semibold uppercase text-muted-foreground tracking-wide">Notifications</h3>
+                  <div className="text-sm space-y-3">
+                    {(formData.save_the_date_image_url ||
+                      formData.save_the_date_text ||
+                      formData.save_the_date_intro_text ||
+                      formData.save_the_date_sms_body) && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">Save the Date overrides</p>
+                        {formData.save_the_date_image_url && (
+                          <div className="relative h-32 w-48 overflow-hidden rounded-md border">
+                            <Image src={formData.save_the_date_image_url} alt="Save the Date" fill className="object-cover" />
+                          </div>
+                        )}
+                        {formData.save_the_date_intro_text && (
+                          <p className="text-muted-foreground text-xs">Intro: customized</p>
+                        )}
+                        {formData.save_the_date_text && (
+                          <p className="text-muted-foreground text-xs">Body text: customized</p>
+                        )}
+                        {formData.save_the_date_sms_body && (
+                          <p className="text-muted-foreground text-xs">SMS: customized</p>
+                        )}
                       </div>
                     )}
-                    {formData.save_the_date_text && (
-                      <p className="text-muted-foreground">
-                        {formData.save_the_date_text.length > 150
-                          ? formData.save_the_date_text.slice(0, 150) + '...'
-                          : formData.save_the_date_text}
-                      </p>
+                    {(formData.invitation_intro_text ||
+                      formData.invitation_image_url ||
+                      formData.invitation_after_image_text ||
+                      formData.invitation_sms_body) && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">Invitation overrides</p>
+                        {formData.invitation_image_url && (
+                          <div className="relative h-32 w-48 overflow-hidden rounded-md border">
+                            <Image src={formData.invitation_image_url} alt="Invitation" fill className="object-cover" />
+                          </div>
+                        )}
+                        {formData.invitation_intro_text && (
+                          <p className="text-muted-foreground text-xs">Intro: customized</p>
+                        )}
+                        {formData.invitation_after_image_text && (
+                          <p className="text-muted-foreground text-xs">After-image text: customized</p>
+                        )}
+                        {formData.invitation_sms_body && (
+                          <p className="text-muted-foreground text-xs">SMS: customized</p>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

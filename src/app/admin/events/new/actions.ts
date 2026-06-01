@@ -45,6 +45,12 @@ const createEventSchema = z
     gallery_urls: z.array(z.string().url()).optional(),
     save_the_date_image_url: z.string().url().nullable().optional(),
     save_the_date_text: z.string().max(2000).nullable().optional(),
+    save_the_date_intro_text: z.string().max(2000).nullable().optional(),
+    save_the_date_sms_body: z.string().max(1200).nullable().optional(),
+    invitation_intro_text: z.string().max(2000).nullable().optional(),
+    invitation_image_url: z.string().url().nullable().optional(),
+    invitation_after_image_text: z.string().max(2000).nullable().optional(),
+    invitation_sms_body: z.string().max(1200).nullable().optional(),
     video_url: z.string().max(500).nullable().optional(),
     faq: z.array(faqPairSchema).optional(),
     ticket_qr_enabled: z.boolean().optional().default(false),
@@ -88,6 +94,12 @@ export type CreateEventInput = {
   gallery_urls?: string[];
   save_the_date_image_url?: string | null;
   save_the_date_text?: string | null;
+  save_the_date_intro_text?: string | null;
+  save_the_date_sms_body?: string | null;
+  invitation_intro_text?: string | null;
+  invitation_image_url?: string | null;
+  invitation_after_image_text?: string | null;
+  invitation_sms_body?: string | null;
   video_url?: string | null;
   faq?: Array<{ question: string; answer: string }>;
   ticket_qr_enabled?: boolean;

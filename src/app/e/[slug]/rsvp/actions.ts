@@ -183,6 +183,7 @@ export async function submitRsvp(
         locationName: event.location_name,
         tickets: [{ tierName: tier.name, quantity, ticketCode: ticket.ticket_code }],
         venueName,
+        bannerText: event.location_name ?? venueName,
       }),
     }).catch((err) => {
       console.error('Failed to send RSVP confirmation email:', err);

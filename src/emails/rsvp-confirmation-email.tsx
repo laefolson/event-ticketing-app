@@ -15,6 +15,7 @@ interface RsvpConfirmationEmailProps {
   locationName: string | null;
   tickets: TicketLine[];
   venueName: string;
+  bannerText?: string | null;
 }
 
 export function RsvpConfirmationEmail({
@@ -24,9 +25,14 @@ export function RsvpConfirmationEmail({
   locationName,
   tickets,
   venueName,
+  bannerText,
 }: RsvpConfirmationEmailProps) {
   return (
-    <BaseLayout preview={`Your RSVP for ${eventTitle} is confirmed`} venueName={venueName}>
+    <BaseLayout
+      preview={`Your RSVP for ${eventTitle} is confirmed`}
+      venueName={venueName}
+      bannerText={bannerText}
+    >
       <Text style={heading}>RSVP Confirmed!</Text>
       <Text style={paragraph}>Hi {attendeeName},</Text>
       <Text style={paragraph}>

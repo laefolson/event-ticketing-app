@@ -35,6 +35,12 @@ export interface Event {
   faq: Array<{ question: string; answer: string }>;
   save_the_date_image_url: string | null;
   save_the_date_text: string | null;
+  save_the_date_intro_text: string | null;
+  save_the_date_sms_body: string | null;
+  invitation_intro_text: string | null;
+  invitation_image_url: string | null;
+  invitation_after_image_text: string | null;
+  invitation_sms_body: string | null;
   status: EventStatus;
   social_sharing_enabled: boolean;
   ticket_qr_enabled: boolean;

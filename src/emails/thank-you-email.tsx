@@ -7,6 +7,7 @@ interface ThankYouEmailProps {
   eventTitle: string;
   customBody: string;
   venueName: string;
+  bannerText?: string | null;
   coverImageUrl?: string | null;
 }
 
@@ -15,10 +16,15 @@ export function ThankYouEmail({
   eventTitle,
   customBody,
   venueName,
+  bannerText,
   coverImageUrl,
 }: ThankYouEmailProps) {
   return (
-    <BaseLayout preview={`Thank you for attending ${eventTitle}`} venueName={venueName}>
+    <BaseLayout
+      preview={`Thank you for attending ${eventTitle}`}
+      venueName={venueName}
+      bannerText={bannerText}
+    >
       {coverImageUrl && (
         <Img
           src={coverImageUrl}

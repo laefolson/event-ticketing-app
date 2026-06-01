@@ -209,6 +209,7 @@ export async function createManualTicket(
           tickets: [line],
           amountPaidFormatted: formatCents(parsed.data.amount_paid_cents),
           venueName,
+          bannerText: event.location_name ?? venueName,
           ticketQrEnabled,
           coverImageUrl: event.cover_image_url,
         }),

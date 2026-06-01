@@ -286,6 +286,7 @@ export async function createCheckoutSession(
           locationName: event.location_name,
           tickets: ticketsList,
           venueName,
+          bannerText: event.location_name ?? venueName,
         }),
       }).catch((err) => {
         console.error('Failed to send RSVP confirmation email:', err);

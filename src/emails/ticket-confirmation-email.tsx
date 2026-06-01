@@ -17,6 +17,7 @@ interface TicketConfirmationEmailProps {
   tickets: TicketLine[];
   amountPaidFormatted: string;
   venueName: string;
+  bannerText?: string | null;
   ticketQrEnabled?: boolean;
   coverImageUrl?: string | null;
 }
@@ -29,11 +30,16 @@ export function TicketConfirmationEmail({
   tickets,
   amountPaidFormatted,
   venueName,
+  bannerText,
   ticketQrEnabled,
   coverImageUrl,
 }: TicketConfirmationEmailProps) {
   return (
-    <BaseLayout preview={`Your tickets for ${eventTitle} are confirmed`} venueName={venueName}>
+    <BaseLayout
+      preview={`Your tickets for ${eventTitle} are confirmed`}
+      venueName={venueName}
+      bannerText={bannerText}
+    >
       {coverImageUrl && (
         <Img
           src={coverImageUrl}

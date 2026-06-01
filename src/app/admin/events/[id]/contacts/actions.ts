@@ -494,16 +494,28 @@ export async function sendInvitations(
     return { success: false, error: 'You must be logged in.' };
   }
 
-  // Fetch event details for the template
+  // Fetch event details for the template. Includes the notification override
+  // columns so admins can customize intro copy, the marketing image, after-image
+  // text, and the SMS body per-event.
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, title, slug, date_start, location_name')
+    .select('id, title, slug, date_start, location_name, cover_image_url, invitation_intro_text, invitation_image_url, invitation_after_image_text, invitation_sms_body')
     .eq('id', eventId)
     .single();
 
   if (eventError || !event) {
     return { success: false, error: 'Event not found.' };
   }
+
+  // Pull tier prices to determine button label: "RSVP" for free events,
+  // otherwise "View Event & Purchase Tickets".
+  const { data: tierRows } = await supabase
+    .from('ticket_tiers')
+    .select('price_cents')
+    .eq('event_id', eventId);
+  const isFreeEvent =
+    !!tierRows && tierRows.length > 0 &&
+    tierRows.every((t) => (t.price_cents ?? 0) === 0);
 
   // Build contacts query based on scope. Reads name/email/phone via the
   // master_contacts join so we stop depending on legacy contacts columns.
@@ -538,9 +550,13 @@ export async function sendInvitations(
   const venueName = await getVenueName();
   const origin = getBaseUrl();
   const eventUrl = `${origin}/e/${event.slug}`;
-  const dateFormatted = formatDate(event.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
   const emailSubject = `You're invited to ${event.title}`;
-  const smsBody = `You're invited to ${event.title} on ${formatDate(event.date_start, 'MMM d, yyyy')}! View details & RSVP: ${eventUrl}`;
+  const defaultSmsBody = `You're invited to ${event.title} on ${formatDate(event.date_start, 'MMM d, yyyy')}! View details: ${eventUrl}`;
+  const smsBody = event.invitation_sms_body?.trim()
+    ? `${event.invitation_sms_body.trim()} ${eventUrl}`
+    : defaultSmsBody;
+  const bannerText = event.location_name ?? venueName;
+  const invitationImage = event.invitation_image_url ?? event.cover_image_url;
 
   let sent = 0;
   let failed = 0;
@@ -569,10 +585,13 @@ export async function sendInvitations(
         react: InvitationEmail({
           firstName,
           eventTitle: event.title,
-          dateFormatted,
-          locationName: event.location_name,
           eventUrl,
           venueName,
+          bannerText,
+          introText: event.invitation_intro_text,
+          imageUrl: invitationImage,
+          afterImageText: event.invitation_after_image_text,
+          isFreeEvent,
         }),
       });
 
@@ -667,10 +686,10 @@ export async function sendSaveTheDates(
     return { success: false, error: 'You must be logged in.' };
   }
 
-  // Fetch event details
+  // Fetch event details (includes per-event save-the-date overrides).
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, title, date_start, save_the_date_image_url, save_the_date_text')
+    .select('id, title, date_start, location_name, save_the_date_image_url, save_the_date_text, save_the_date_intro_text, save_the_date_sms_body')
     .eq('id', eventId)
     .single();
 
@@ -710,7 +729,9 @@ export async function sendSaveTheDates(
   const venueName = await getVenueName();
   const emailSubject = `Save the Date: ${event.title}`;
   const dateFormatted = formatDate(event.date_start, 'MMM d, yyyy');
-  const smsBody = `Save the date! ${event.title} on ${dateFormatted}. More details coming soon.`;
+  const smsBody = event.save_the_date_sms_body?.trim()
+    ?? `Save the date! ${event.title} on ${dateFormatted}. More details coming soon.`;
+  const bannerText = event.location_name ?? venueName;
 
   let sent = 0;
   let failed = 0;
@@ -739,7 +760,9 @@ export async function sendSaveTheDates(
           eventTitle: event.title,
           imageUrl: event.save_the_date_image_url,
           additionalText: event.save_the_date_text,
+          introText: event.save_the_date_intro_text,
           venueName,
+          bannerText,
         }),
       });
 

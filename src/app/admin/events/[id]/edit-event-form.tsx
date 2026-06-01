@@ -73,8 +73,6 @@ interface FormData {
   cover_image_url: string | null;
   hide_title_on_hero: boolean;
   gallery_urls: string[];
-  save_the_date_image_url: string | null;
-  save_the_date_text: string;
   social_sharing_enabled: boolean;
   ticket_qr_enabled: boolean;
   video_url: string;
@@ -105,8 +103,6 @@ export function EditEventForm({ event }: EditEventFormProps) {
     cover_image_url: event.cover_image_url ?? null,
     hide_title_on_hero: event.hide_title_on_hero,
     gallery_urls: event.gallery_urls ?? [],
-    save_the_date_image_url: event.save_the_date_image_url ?? null,
-    save_the_date_text: event.save_the_date_text ?? '',
     social_sharing_enabled: event.social_sharing_enabled,
     ticket_qr_enabled: event.ticket_qr_enabled,
     video_url: event.video_url ?? '',
@@ -190,8 +186,6 @@ export function EditEventForm({ event }: EditEventFormProps) {
       cover_image_url: formData.cover_image_url,
       hide_title_on_hero: formData.hide_title_on_hero,
       gallery_urls: formData.gallery_urls,
-      save_the_date_image_url: formData.save_the_date_image_url,
-      save_the_date_text: formData.save_the_date_text.trim() || null,
       social_sharing_enabled: formData.social_sharing_enabled,
       ticket_qr_enabled: formData.ticket_qr_enabled,
       video_url: formData.video_url.trim() || null,
@@ -461,38 +455,6 @@ export function EditEventForm({ event }: EditEventFormProps) {
               <p className="text-xs text-muted-foreground">
                 Optional — embeds a 16:9 YouTube player on the public event page.
               </p>
-            </div>
-
-            {/* Save the Date */}
-            <div className="space-y-2 rounded-lg border p-4">
-              <Label className="text-base font-semibold">Save the Date</Label>
-              <p className="text-muted-foreground text-sm">
-                Optional image and text for save-the-date messages.
-              </p>
-              <div className="space-y-4 pt-2">
-                <div className="space-y-2">
-                  <Label>Image</Label>
-                  <ImageUpload
-                    eventId={event.id}
-                    type="cover"
-                    currentUrl={formData.save_the_date_image_url}
-                    onUpload={(url) => updateField('save_the_date_image_url', url)}
-                    onRemove={() => updateField('save_the_date_image_url', null)}
-                    contain
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="save_the_date_text">Additional Text</Label>
-                  <Textarea
-                    id="save_the_date_text"
-                    placeholder="Add any extra details for the save-the-date message..."
-                    rows={3}
-                    value={formData.save_the_date_text}
-                    onChange={(e) => updateField('save_the_date_text', e.target.value)}
-                    maxLength={2000}
-                  />
-                </div>
-              </div>
             </div>
 
             {/* Cover Image */}

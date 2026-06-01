@@ -173,6 +173,7 @@ export async function POST(request: NextRequest) {
               tickets: ticketLines,
               amountPaidFormatted: formatCents(amountTotal),
               venueName,
+              bannerText: eventData.location_name ?? venueName,
               ticketQrEnabled,
               coverImageUrl: eventData.cover_image_url,
             }),

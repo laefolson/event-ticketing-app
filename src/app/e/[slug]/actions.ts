@@ -115,6 +115,7 @@ export async function resendTickets(
       tickets: ticketLines,
       amountPaidFormatted: formatCents(amountTotal),
       venueName,
+      bannerText: event.location_name ?? venueName,
       ticketQrEnabled,
       coverImageUrl: event.cover_image_url,
     }),

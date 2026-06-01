@@ -220,7 +220,7 @@ export async function sendThankYouMessages(
   // Verify event exists and has ended
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, title, date_end, cover_image_url')
+    .select('id, title, date_end, cover_image_url, location_name')
     .eq('id', eventId)
     .single();
 
@@ -271,6 +271,7 @@ export async function sendThankYouMessages(
           eventTitle: event.title,
           customBody: emailBody,
           venueName,
+          bannerText: event.location_name ?? venueName,
           coverImageUrl: event.cover_image_url,
         }),
       });

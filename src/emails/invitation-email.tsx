@@ -1,44 +1,63 @@
-import { Section, Text, Button } from '@react-email/components';
+import { Section, Text, Button, Img } from '@react-email/components';
 import * as React from 'react';
 import { BaseLayout } from './base-layout';
 
 interface InvitationEmailProps {
   firstName: string;
   eventTitle: string;
-  dateFormatted: string;
-  locationName: string | null;
   eventUrl: string;
   venueName: string;
+  bannerText?: string | null;
+  introText: string | null;
+  imageUrl: string | null;
+  afterImageText: string | null;
+  isFreeEvent: boolean;
 }
 
 export function InvitationEmail({
   firstName,
   eventTitle,
-  dateFormatted,
-  locationName,
   eventUrl,
   venueName,
+  bannerText,
+  introText,
+  imageUrl,
+  afterImageText,
+  isFreeEvent,
 }: InvitationEmailProps) {
+  const buttonLabel = isFreeEvent
+    ? 'RSVP'
+    : 'View Event & Purchase Tickets';
+
   return (
-    <BaseLayout preview={`You're invited to ${eventTitle}`} venueName={venueName}>
+    <BaseLayout
+      preview={`You're invited to ${eventTitle}`}
+      venueName={venueName}
+      bannerText={bannerText}
+    >
       <Text style={heading}>You&apos;re Invited!</Text>
       <Text style={paragraph}>Hi {firstName},</Text>
-      <Text style={paragraph}>
-        We&apos;d love for you to join us at <strong>{eventTitle}</strong>.
-      </Text>
-      <Section style={detailsBox}>
-        <Text style={detailLabel}>Date</Text>
-        <Text style={detailValue}>{dateFormatted}</Text>
-        {locationName && (
-          <>
-            <Text style={detailLabel}>Location</Text>
-            <Text style={detailValue}>{locationName}</Text>
-          </>
-        )}
-      </Section>
+      {introText ? (
+        <Text style={paragraph}>{introText}</Text>
+      ) : (
+        <Text style={paragraph}>
+          We&apos;d love for you to join us at <strong>{eventTitle}</strong>.
+        </Text>
+      )}
+      {imageUrl && (
+        <Section style={imageSection}>
+          <Img
+            src={imageUrl}
+            alt={eventTitle}
+            width="496"
+            style={image}
+          />
+        </Section>
+      )}
+      {afterImageText && <Text style={paragraph}>{afterImageText}</Text>}
       <Section style={ctaSection}>
         <Button style={ctaButton} href={eventUrl}>
-          View Event &amp; RSVP
+          {buttonLabel}
         </Button>
       </Section>
       <Text style={footnote}>
@@ -64,28 +83,14 @@ const paragraph: React.CSSProperties = {
   margin: '0 0 12px',
 };
 
-const detailsBox: React.CSSProperties = {
-  backgroundColor: '#fdf9f0',
-  border: '1px solid #e8e5da',
-  borderRadius: '6px',
+const imageSection: React.CSSProperties = {
   margin: '20px 0',
-  padding: '16px 20px',
 };
 
-const detailLabel: React.CSSProperties = {
-  color: '#5f5c55',
-  fontSize: '12px',
-  fontWeight: '600',
-  letterSpacing: '0.05em',
-  margin: '0 0 2px',
-  textTransform: 'uppercase' as const,
-};
-
-const detailValue: React.CSSProperties = {
-  color: '#2c2a24',
-  fontSize: '15px',
-  fontWeight: '500',
-  margin: '0 0 12px',
+const image: React.CSSProperties = {
+  borderRadius: '6px',
+  maxWidth: '100%',
+  height: 'auto',
 };
 
 const ctaSection: React.CSSProperties = {

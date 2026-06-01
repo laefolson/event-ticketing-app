@@ -7,7 +7,9 @@ interface SaveTheDateEmailProps {
   eventTitle: string;
   imageUrl: string | null;
   additionalText: string | null;
+  introText: string | null;
   venueName: string;
+  bannerText?: string | null;
 }
 
 export function SaveTheDateEmail({
@@ -15,16 +17,26 @@ export function SaveTheDateEmail({
   eventTitle,
   imageUrl,
   additionalText,
+  introText,
   venueName,
+  bannerText,
 }: SaveTheDateEmailProps) {
   return (
-    <BaseLayout preview={`Save the Date: ${eventTitle}`} venueName={venueName}>
+    <BaseLayout
+      preview={`Save the Date: ${eventTitle}`}
+      venueName={venueName}
+      bannerText={bannerText}
+    >
       <Text style={heading}>Save the Date!</Text>
       <Text style={paragraph}>Hi {firstName},</Text>
-      <Text style={paragraph}>
-        Mark your calendar for <strong>{eventTitle}</strong>. More details coming
-        soon!
-      </Text>
+      {introText ? (
+        <Text style={paragraph}>{introText}</Text>
+      ) : (
+        <Text style={paragraph}>
+          Mark your calendar for <strong>{eventTitle}</strong>. More details coming
+          soon!
+        </Text>
+      )}
       {imageUrl && (
         <Section style={imageSection}>
           <Img
