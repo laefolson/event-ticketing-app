@@ -24,15 +24,92 @@ import type { Metadata } from 'next';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatDateRange(start: string, end: string): string {
-  const sDay = formatDate(start, 'yyyy-MM-dd');
-  const eDay = formatDate(end, 'yyyy-MM-dd');
+interface TimeLine {
+  label: string | null;
+  text: string;
+}
 
-  if (sDay === eDay) {
-    return `${formatDate(start, 'EEEE, MMMM d, yyyy')} · ${formatDate(start, 'h:mm a')} – ${formatDate(end, 'h:mm a')}`;
+function buildTimeLines(
+  date_start: string,
+  date_end: string | null,
+  start_time_label: string | null,
+  additional_times: Array<{ label: string | null; time: string }>
+): { dateText: string; lines: TimeLine[]; compactSingleLine: string | null } {
+  const sDay = formatDate(date_start, 'yyyy-MM-dd');
+  const eDay = date_end ? formatDate(date_end, 'yyyy-MM-dd') : sDay;
+
+  // Multi-day span — keep the legacy compact format on a single line.
+  if (date_end && sDay !== eDay) {
+    return {
+      dateText: '',
+      lines: [],
+      compactSingleLine: `${formatDate(date_start, 'MMM d, yyyy h:mm a')} – ${formatDate(date_end, 'MMM d, yyyy h:mm a')}`,
+    };
   }
 
-  return `${formatDate(start, 'MMM d, yyyy h:mm a')} – ${formatDate(end, 'MMM d, yyyy h:mm a')}`;
+  const dateText = formatDate(date_start, 'EEEE, MMMM d, yyyy');
+
+  // Compose the per-slot lines: primary slot + any additional slots, sorted
+  // by clock time so the order on the page is sane regardless of input order.
+  type Slot = { label: string | null; hhmm: string; sortKey: string };
+  const slots: Slot[] = [];
+  slots.push({
+    label: start_time_label ?? null,
+    hhmm: formatDate(date_start, 'h:mm a'),
+    sortKey: formatDate(date_start, 'HH:mm'),
+  });
+  for (const extra of additional_times ?? []) {
+    if (!extra?.time) continue;
+    slots.push({
+      label: extra.label ?? null,
+      hhmm: extraTimeTo12h(extra.time),
+      sortKey: extra.time,
+    });
+  }
+  slots.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+  const hasExtras = slots.length > 1;
+  const hasAnyLabel = slots.some((s) => s.label);
+
+  // Compact single-line fallback when nothing fancy is set: legacy display.
+  if (!hasExtras && !hasAnyLabel && date_end) {
+    return {
+      dateText: '',
+      lines: [],
+      compactSingleLine: `${dateText} · ${formatDate(date_start, 'h:mm a')} – ${formatDate(date_end, 'h:mm a')}`,
+    };
+  }
+  if (!hasExtras && !hasAnyLabel && !date_end) {
+    return {
+      dateText: '',
+      lines: [],
+      compactSingleLine: `${dateText} · ${formatDate(date_start, 'h:mm a')}`,
+    };
+  }
+
+  const lines: TimeLine[] = slots.map((s) => ({
+    label: s.label,
+    text: s.label ? `${s.label} at ${s.hhmm}` : s.hhmm,
+  }));
+  if (date_end) {
+    lines.push({
+      label: null,
+      text: `Ends at ${formatDate(date_end, 'h:mm a')}`,
+    });
+  }
+  return { dateText, lines, compactSingleLine: null };
+}
+
+function extraTimeTo12h(hhmm: string): string {
+  // hhmm is the form's "HH:mm" string for an additional time on the same date.
+  // Render in 12h with am/pm without touching timezones.
+  const [hStr, mStr] = hhmm.split(':');
+  const h = Number(hStr);
+  const m = Number(mStr);
+  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${display}:${m.toString().padStart(2, '0')} ${period}`;
 }
 
 function getPriceRange(tiers: TicketTier[]): string {
@@ -144,18 +221,39 @@ export default async function EventPage({ params }: EventPageProps) {
       <div className="mx-auto max-w-3xl px-6 sm:px-8">
         {/* Event info bar */}
         <section className="border-b py-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
-            <div className="flex items-center gap-2 text-sm">
-              <CalendarDays className="text-muted-foreground h-4 w-4 shrink-0" />
-              <span>{formatDateRange(event.date_start, event.date_end)}</span>
-            </div>
-            {(event.location_name || event.location_address) && (
-              <div className="flex items-center gap-2 text-sm">
-                <MapPin className="text-muted-foreground h-4 w-4 shrink-0" />
-                <span>{event.location_name ?? event.location_address}</span>
+          {(() => {
+            const timeInfo = buildTimeLines(
+              event.date_start,
+              event.date_end,
+              event.start_time_label,
+              event.additional_times
+            );
+            return (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
+                <div className="flex items-start gap-2 text-sm">
+                  <CalendarDays className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
+                  {timeInfo.compactSingleLine ? (
+                    <span>{timeInfo.compactSingleLine}</span>
+                  ) : (
+                    <div>
+                      <div>{timeInfo.dateText}</div>
+                      <ul className="mt-1 space-y-0.5">
+                        {timeInfo.lines.map((line, i) => (
+                          <li key={i}>{line.text}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                {(event.location_name || event.location_address) && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <MapPin className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{event.location_name ?? event.location_address}</span>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
           {event.social_sharing_enabled && (
             <div className="mt-4">
               <ShareButtons

@@ -55,12 +55,19 @@ interface FaqPair {
   answer: string;
 }
 
+interface ExtraTimeSlot {
+  label: string;
+  time: string;
+}
+
 interface FormData {
   title: string;
   event_type: EventType | '';
   event_date: string;
   time_start: string;
+  time_start_label: string;
   time_end: string;
+  additional_times: ExtraTimeSlot[];
   capacity: string;
   description: string;
   location_name: string;
@@ -126,7 +133,9 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
     event_type: '',
     event_date: '',
     time_start: '',
+    time_start_label: '',
     time_end: '',
+    additional_times: [],
     capacity: '',
     description: '',
     location_name: '',
@@ -176,13 +185,15 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
       setError('Start time is required');
       return false;
     }
-    if (!formData.time_end) {
-      setError('End time is required');
-      return false;
-    }
-    if (formData.time_end <= formData.time_start) {
+    if (formData.time_end && formData.time_end <= formData.time_start) {
       setError('End time must be after start time');
       return false;
+    }
+    for (const slot of formData.additional_times) {
+      if (!slot.time) {
+        setError('Each additional time needs a time value');
+        return false;
+      }
     }
     if (formData.capacity && (isNaN(Number(formData.capacity)) || Number(formData.capacity) < 1)) {
       setError('Capacity must be a positive number');
@@ -362,13 +373,22 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
     setError(null);
 
     const dateStart = `${formData.event_date}T${formData.time_start}`;
-    const dateEnd = `${formData.event_date}T${formData.time_end}`;
+    const dateEnd = formData.time_end
+      ? `${formData.event_date}T${formData.time_end}`
+      : null;
 
     const eventResult = await createEvent({
       title: formData.title.trim(),
       event_type: formData.event_type as EventType,
       date_start: dateStart,
       date_end: dateEnd,
+      start_time_label: formData.time_start_label.trim() || null,
+      additional_times: formData.additional_times
+        .filter((slot) => slot.time)
+        .map((slot) => ({
+          label: slot.label.trim() || null,
+          time: slot.time,
+        })),
       capacity: formData.capacity ? Number(formData.capacity) : null,
       description: formData.description.trim() || null,
       location_name: formData.location_name.trim() || null,
@@ -542,7 +562,17 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
+                <div className="space-y-2">
+                  <Label htmlFor="time_start_label">Start Label (optional)</Label>
+                  <Input
+                    id="time_start_label"
+                    placeholder="e.g. Reception"
+                    value={formData.time_start_label}
+                    onChange={(e) => updateField('time_start_label', e.target.value)}
+                    maxLength={80}
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="time_start">
                     Start Time <span className="text-destructive">*</span>
@@ -554,18 +584,82 @@ export function NewEventWizard({ defaultHostBio }: NewEventWizardProps) {
                     onChange={(e) => updateField('time_start', e.target.value)}
                   />
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="time_end">
-                    End Time <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="time_end"
-                    type="time"
-                    value={formData.time_end}
-                    onChange={(e) => updateField('time_end', e.target.value)}
-                  />
+              {/* Additional times */}
+              {formData.additional_times.map((slot, idx) => (
+                <div key={idx} className="grid grid-cols-[1fr_auto_auto] gap-3 items-end">
+                  <div className="space-y-2">
+                    <Label htmlFor={`addtime-label-${idx}`}>Label (optional)</Label>
+                    <Input
+                      id={`addtime-label-${idx}`}
+                      placeholder="e.g. Concert"
+                      value={slot.label}
+                      onChange={(e) =>
+                        updateField(
+                          'additional_times',
+                          formData.additional_times.map((s, i) =>
+                            i === idx ? { ...s, label: e.target.value } : s
+                          )
+                        )
+                      }
+                      maxLength={80}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`addtime-time-${idx}`}>Time</Label>
+                    <Input
+                      id={`addtime-time-${idx}`}
+                      type="time"
+                      value={slot.time}
+                      onChange={(e) =>
+                        updateField(
+                          'additional_times',
+                          formData.additional_times.map((s, i) =>
+                            i === idx ? { ...s, time: e.target.value } : s
+                          )
+                        )
+                      }
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      updateField(
+                        'additional_times',
+                        formData.additional_times.filter((_, i) => i !== idx)
+                      )
+                    }
+                    aria-label="Remove time"
+                  >
+                    Remove
+                  </Button>
                 </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={() =>
+                  updateField('additional_times', [
+                    ...formData.additional_times,
+                    { label: '', time: '' },
+                  ])
+                }
+                className="text-sm text-primary hover:underline self-start"
+              >
+                + Add another time
+              </button>
+
+              <div className="space-y-2">
+                <Label htmlFor="time_end">End Time (optional)</Label>
+                <Input
+                  id="time_end"
+                  type="time"
+                  value={formData.time_end}
+                  onChange={(e) => updateField('time_end', e.target.value)}
+                />
               </div>
 
               <div className="space-y-2">

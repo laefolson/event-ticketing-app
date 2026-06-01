@@ -14,6 +14,13 @@ const faqPairSchema = z.object({
   answer: z.string().min(1, 'Answer is required').max(2000),
 });
 
+const additionalTimeSchema = z.object({
+  label: z.string().max(80).nullable().optional(),
+  time: z
+    .string()
+    .regex(/^([01]?\d|2[0-3]):[0-5]\d$/, 'Time must be in HH:MM format'),
+});
+
 const createEventSchema = z
   .object({
     title: z.string().min(1, 'Title is required').max(200),
@@ -21,7 +28,9 @@ const createEventSchema = z
       error: 'Event type is required',
     }),
     date_start: z.string().min(1, 'Start date is required'),
-    date_end: z.string().min(1, 'End date is required'),
+    date_end: z.string().nullable().optional(),
+    start_time_label: z.string().max(80).nullable().optional(),
+    additional_times: z.array(additionalTimeSchema).optional(),
     capacity: z
       .number()
       .int()
@@ -43,16 +52,16 @@ const createEventSchema = z
     publish: z.boolean(),
   })
   .superRefine((data, ctx) => {
-    // The form passes a naive datetime like "2026-06-15T19:30" meant to be
-    // read in Mountain Time — convert to UTC before comparing.
-    const start = fromZonedTime(data.date_start, VENUE_TZ);
-    const end = fromZonedTime(data.date_end, VENUE_TZ);
-    if (end <= start) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'End date must be after start date',
-        path: ['date_end'],
-      });
+    if (data.date_end) {
+      const start = fromZonedTime(data.date_start, VENUE_TZ);
+      const end = fromZonedTime(data.date_end, VENUE_TZ);
+      if (end <= start) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'End time must be after start time',
+          path: ['date_end'],
+        });
+      }
     }
     if (data.video_url && !extractYouTubeId(data.video_url)) {
       ctx.addIssue({
@@ -67,7 +76,9 @@ export type CreateEventInput = {
   title: string;
   event_type: EventType;
   date_start: string;
-  date_end: string;
+  date_end?: string | null;
+  start_time_label?: string | null;
+  additional_times?: Array<{ label?: string | null; time: string }>;
   capacity: number | null;
   description: string | null;
   location_name: string | null;
@@ -122,7 +133,10 @@ export async function createEvent(
     .insert({
       ...fields,
       date_start: fromZonedTime(fields.date_start, VENUE_TZ).toISOString(),
-      date_end: fromZonedTime(fields.date_end, VENUE_TZ).toISOString(),
+      date_end: fields.date_end
+        ? fromZonedTime(fields.date_end, VENUE_TZ).toISOString()
+        : null,
+      additional_times: fields.additional_times ?? [],
       gallery_urls: fields.gallery_urls ?? [],
       faq: fields.faq ?? [],
       slug,

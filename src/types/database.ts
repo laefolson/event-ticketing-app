@@ -20,7 +20,9 @@ export interface Event {
   event_type: EventType;
   description: string | null;
   date_start: string;
-  date_end: string;
+  date_end: string | null;
+  start_time_label: string | null;
+  additional_times: Array<{ label: string | null; time: string }>;
   location_name: string | null;
   location_address: string | null;
   capacity: number | null;

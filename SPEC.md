@@ -140,8 +140,10 @@ RLS must be enabled on all tables.
 | slug | text | unique; kebab-case + 6 random chars (e.g. `harvest-dinner-x7k2m9`) |
 | event_type | enum | `dinner \| concert \| movie_night \| other` |
 | description | text | markdown supported |
-| date_start | timestamptz | |
-| date_end | timestamptz | |
+| date_start | timestamptz | not null; canonical primary start time (used for sorting, calendar, structured data) |
+| date_end | timestamptz | nullable; optional end time. When unset the public page omits the end-time portion of the display. |
+| start_time_label | text | nullable; optional label for the primary start time (e.g. "Reception", "Doors") rendered on the public page |
+| additional_times | jsonb | array of `{label: string \| null, time: "HH:MM"}` for additional labeled time slots on the same event date (e.g. a 6 PM reception followed by a 7 PM concert). The date is implied by `date_start`'s date; sorted by clock time on the public page. |
 | location_name | text | e.g. "The Barn at [Farm Name]" |
 | location_address | text | |
 | capacity | integer | max total attendees across all tiers |
