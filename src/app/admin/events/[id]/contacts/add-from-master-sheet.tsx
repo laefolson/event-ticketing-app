@@ -22,6 +22,7 @@ import {
   searchMasterContactsForEvent,
   getMasterContactsForPriorEvent,
   getMasterContactsByOptIn,
+  getMasterContactsByContributor,
   addMasterContactsToEvent,
   type PickableMasterContact,
 } from './actions';
@@ -39,13 +40,14 @@ interface StagedContact {
 interface AddFromMasterSheetProps {
   eventId: string;
   priorEvents: { id: string; title: string }[];
+  pastContributors: string[];
 }
 
 function displayName(c: { first_name: string; last_name: string; email: string }) {
   return `${c.first_name} ${c.last_name}`.trim() || c.email;
 }
 
-export function AddFromMasterSheet({ eventId, priorEvents }: AddFromMasterSheetProps) {
+export function AddFromMasterSheet({ eventId, priorEvents, pastContributors }: AddFromMasterSheetProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
@@ -72,6 +74,11 @@ export function AddFromMasterSheet({ eventId, priorEvents }: AddFromMasterSheetP
   const [optResults, setOptResults] = useState<PickableMasterContact[]>([]);
   const [optLoading, setOptLoading] = useState(false);
 
+  // Contributor
+  const [contributor, setContributor] = useState<string>('');
+  const [contributorResults, setContributorResults] = useState<PickableMasterContact[]>([]);
+  const [contributorLoading, setContributorLoading] = useState(false);
+
   function resetAll() {
     setStaged([]);
     setChannel('email');
@@ -83,6 +90,8 @@ export function AddFromMasterSheet({ eventId, priorEvents }: AddFromMasterSheetP
     setOptEvent(false);
     setOptMarketing(false);
     setOptResults([]);
+    setContributor('');
+    setContributorResults([]);
     setActiveTab('search');
   }
 
@@ -128,6 +137,20 @@ export function AddFromMasterSheet({ eventId, priorEvents }: AddFromMasterSheetP
       setOptLoading(false);
     })();
   }, [optEvent, optMarketing, open, activeTab, eventId]);
+
+  useEffect(() => {
+    if (!open || activeTab !== 'contributor' || !contributor) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setContributorResults([]);
+      return;
+    }
+    setContributorLoading(true);
+    (async () => {
+      const res = await getMasterContactsByContributor(eventId, contributor);
+      if (res.success) setContributorResults(res.data ?? []);
+      setContributorLoading(false);
+    })();
+  }, [contributor, open, activeTab, eventId]);
 
   function toggleStaged(c: PickableMasterContact, addedBy: AddedBy) {
     setStaged((prev) => {
@@ -197,10 +220,11 @@ export function AddFromMasterSheet({ eventId, priorEvents }: AddFromMasterSheetP
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden mt-4">
           <div className="px-6">
-            <TabsList className="grid grid-cols-3 w-full">
-              <TabsTrigger value="search">Search &amp; Select</TabsTrigger>
-              <TabsTrigger value="prior">By Prior Event</TabsTrigger>
-              <TabsTrigger value="optin">By Opt-In Status</TabsTrigger>
+            <TabsList className="grid grid-cols-4 w-full">
+              <TabsTrigger value="search">Search</TabsTrigger>
+              <TabsTrigger value="prior">Prior Event</TabsTrigger>
+              <TabsTrigger value="optin">Opt-In</TabsTrigger>
+              <TabsTrigger value="contributor">Contributor</TabsTrigger>
             </TabsList>
           </div>
 
@@ -294,6 +318,36 @@ export function AddFromMasterSheet({ eventId, priorEvents }: AddFromMasterSheetP
               isStaged={isStaged}
               toggle={(c) => toggleStaged(c, 'manual')}
               emptyMessage={(!optEvent && !optMarketing) ? 'Pick at least one opt-in.' : 'No matching contacts.'}
+            />
+          </TabsContent>
+
+          <TabsContent value="contributor" className="flex-1 overflow-hidden flex flex-col px-6 mt-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="contributor-select">Contributor</Label>
+              <Select value={contributor} onValueChange={setContributor}>
+                <SelectTrigger id="contributor-select" className="w-full">
+                  <SelectValue placeholder="Choose a contributor..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {pastContributors.length === 0 ? (
+                    <SelectItem value="__none__" disabled>No contributors yet</SelectItem>
+                  ) : (
+                    pastContributors.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Contacts already linked to this event are excluded automatically.
+              </p>
+            </div>
+            <ResultsList
+              loading={contributorLoading}
+              rows={contributorResults}
+              isStaged={isStaged}
+              toggle={(c) => toggleStaged(c, 'manual')}
+              emptyMessage={contributor ? 'No master contacts from this contributor (or all are already in the event).' : 'Pick a contributor to see their contacts.'}
             />
           </TabsContent>
         </Tabs>

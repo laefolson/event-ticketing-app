@@ -46,17 +46,24 @@ function normalizeHeader(h: string): string {
   }
 }
 
-export function ImportCsvDialog() {
+interface ImportCsvDialogProps {
+  /** Past contributor labels for the datalist autocomplete. */
+  pastContributors: string[];
+}
+
+export function ImportCsvDialog({ pastContributors }: ImportCsvDialogProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [contributor, setContributor] = useState('');
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MasterImportResult | null>(null);
 
   function reset() {
     setFile(null);
+    setContributor('');
     setError(null);
     setResult(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -111,7 +118,8 @@ export function ImportCsvDialog() {
           phone: row.phone?.trim() || null,
           sms_opt_in: row.sms_opt_in ?? null,
         }));
-        const res = await importMasterContacts(rows);
+        const contributorName = contributor.trim().toLowerCase() || null;
+        const res = await importMasterContacts(rows, contributorName);
         if (!res.success) {
           setError(res.error ?? 'Import failed.');
           return;
@@ -205,6 +213,27 @@ export function ImportCsvDialog() {
                 accept=".csv,.tsv,.txt"
                 onChange={handleFileChange}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="master-csv-contributor">Contributed by (optional)</Label>
+              <Input
+                id="master-csv-contributor"
+                list="csv-past-contributors"
+                value={contributor}
+                onChange={(e) => setContributor(e.target.value)}
+                placeholder="e.g. alice"
+                autoComplete="off"
+              />
+              <datalist id="csv-past-contributors">
+                {pastContributors.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+              <p className="text-muted-foreground text-xs">
+                Who supplied this list. Stored lowercase. Applies only to new contacts —
+                existing contacts keep whoever first introduced them.
+              </p>
             </div>
 
             <div className="text-muted-foreground rounded-md border p-3 text-xs leading-relaxed">

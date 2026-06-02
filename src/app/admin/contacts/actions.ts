@@ -115,6 +115,107 @@ export async function deleteMasterContact(id: string): Promise<ActionResponse<{ 
   return { success: true, data: { id } };
 }
 
+export interface BulkDeletionImpact {
+  contactCount: number;
+  upcomingTicketContacts: number;
+  upcomingEventCount: number;
+  pastTicketContacts: number;
+}
+
+/**
+ * Aggregate impact summary for a bulk delete confirmation dialog. Counts
+ * how many of the selected master contacts hold active tickets for
+ * upcoming events, how many distinct upcoming events would be affected,
+ * and how many have past-event attendance history that would lose its
+ * contact-row link. Cheap: two scoped queries.
+ */
+export async function getBulkDeletionImpact(
+  ids: string[]
+): Promise<ActionResponse<BulkDeletionImpact>> {
+  if (ids.length === 0) {
+    return {
+      success: true,
+      data: {
+        contactCount: 0,
+        upcomingTicketContacts: 0,
+        upcomingEventCount: 0,
+        pastTicketContacts: 0,
+      },
+    };
+  }
+
+  const supabase = await createClient();
+  const nowIso = new Date().toISOString();
+
+  // Pull every ticket-bearing contact row for the selected masters along
+  // with each event's start date. We narrow to confirmed/checked_in so
+  // refunded/cancelled rows don't trigger a false warning.
+  const { data, error } = await supabase
+    .from('contacts')
+    .select(`
+      master_contact_id,
+      event_id,
+      events!inner(date_start),
+      tickets!inner(status)
+    `)
+    .in('master_contact_id', ids)
+    .in('tickets.status', ['confirmed', 'checked_in']);
+
+  if (error) return { success: false, error: error.message };
+
+  const upcomingContacts = new Set<string>();
+  const upcomingEvents = new Set<string>();
+  const pastContacts = new Set<string>();
+
+  for (const row of data ?? []) {
+    const masterId = row.master_contact_id as string | null;
+    const eventId = row.event_id as string | null;
+    const ev = Array.isArray(row.events) ? row.events[0] : row.events;
+    const dateStart = ev?.date_start as string | undefined;
+    if (!masterId || !eventId || !dateStart) continue;
+    if (dateStart > nowIso) {
+      upcomingContacts.add(masterId);
+      upcomingEvents.add(eventId);
+    } else {
+      pastContacts.add(masterId);
+    }
+  }
+
+  return {
+    success: true,
+    data: {
+      contactCount: ids.length,
+      upcomingTicketContacts: upcomingContacts.size,
+      upcomingEventCount: upcomingEvents.size,
+      pastTicketContacts: pastContacts.size,
+    },
+  };
+}
+
+export interface BulkDeleteResult {
+  deleted: number;
+  requested: number;
+}
+
+export async function deleteMasterContactsBulk(
+  ids: string[]
+): Promise<ActionResponse<BulkDeleteResult>> {
+  if (ids.length === 0) return { success: false, error: 'No contacts selected.' };
+  if (ids.length > 500) {
+    return { success: false, error: 'Bulk delete is limited to 500 contacts at a time.' };
+  }
+
+  const supabase = await createClient();
+  const { error, count } = await supabase
+    .from('master_contacts')
+    .delete({ count: 'exact' })
+    .in('id', ids);
+
+  if (error) return { success: false, error: error.message };
+  revalidatePath('/admin/contacts');
+  return { success: true, data: { deleted: count ?? 0, requested: ids.length } };
+}
+
 export interface MasterImportResult {
   totalRows: number;
   added: number;
@@ -126,7 +227,8 @@ export interface MasterImportResult {
 }
 
 export async function importMasterContacts(
-  rows: MasterCsvRow[]
+  rows: MasterCsvRow[],
+  contributorName: string | null = null
 ): Promise<ActionResponse<MasterImportResult>> {
   if (rows.length === 0) {
     return { success: false, error: 'CSV file is empty.' };
@@ -142,7 +244,10 @@ export async function importMasterContacts(
   const supabase = await createClient();
   let summary;
   try {
-    summary = await processMasterContactsCsv(supabase, rows);
+    summary = await processMasterContactsCsv(supabase, rows, {
+      source: 'csv_import',
+      contributorName,
+    });
   } catch (e) {
     return { success: false, error: (e as Error).message };
   }
@@ -279,7 +384,8 @@ export interface SheetSyncResult {
 async function runSheetSync(
   url: string,
   rawMapping: SheetMapping,
-  dryRun: boolean
+  dryRun: boolean,
+  contributorName: string | null = null
 ): Promise<ActionResponse<SheetSyncResult>> {
   const parsed = sheetMappingSchema.safeParse(rawMapping);
   if (!parsed.success) {
@@ -305,6 +411,7 @@ async function runSheetSync(
     summary = await processMasterContactsCsv(supabase, rows, {
       source: 'google_sheets',
       dryRun,
+      contributorName,
     });
   } catch (e) {
     return { success: false, error: (e as Error).message };
@@ -337,16 +444,37 @@ async function runSheetSync(
 
 export async function previewGoogleSheetSync(
   url: string,
-  mapping: SheetMapping
+  mapping: SheetMapping,
+  contributorName: string | null = null
 ): Promise<ActionResponse<SheetSyncResult>> {
-  return runSheetSync(url, mapping, true);
+  return runSheetSync(url, mapping, true, contributorName);
 }
 
 export async function runGoogleSheetSync(
   url: string,
-  mapping: SheetMapping
+  mapping: SheetMapping,
+  contributorName: string | null = null
 ): Promise<ActionResponse<SheetSyncResult>> {
-  return runSheetSync(url, mapping, false);
+  return runSheetSync(url, mapping, false, contributorName);
+}
+
+/**
+ * Distinct list of past contributor labels, sorted alphabetically. Used
+ * to populate the datalist autocomplete on import dialogs.
+ */
+export async function listContributors(): Promise<string[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('master_contacts')
+    .select('contributor_name')
+    .not('contributor_name', 'is', null)
+    .order('contributor_name', { ascending: true });
+  const seen = new Set<string>();
+  for (const row of data ?? []) {
+    const v = (row.contributor_name as string | null)?.trim();
+    if (v) seen.add(v);
+  }
+  return Array.from(seen);
 }
 
 export async function getSavedSheetSyncConfig(): Promise<ActionResponse<SheetSyncConfig | null>> {

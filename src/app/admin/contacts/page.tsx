@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { createClient } from '@/lib/supabase/server';
 import { ContactsManager } from './contacts-manager';
+import { listContributors } from './actions';
 import type { ContactSource, MasterContact } from '@/types/database';
 
 const VALID_SOURCES: ContactSource[] = [
@@ -15,8 +16,29 @@ type SearchParams = {
   opt_marketing?: string; // "yes" | "no"
   source?: string;
   event_id?: string;
+  contributor?: string;
+  sort?: string;          // "last_name", "-last_name", "source", "-source", etc.
   page?: string;
 };
+
+const SORTABLE_COLUMNS = [
+  'last_name',
+  'source',
+  'sms_opt_in_event_updates',
+  'sms_opt_in_marketing',
+  'contributor_name',
+  'created_at',
+] as const;
+type SortableColumn = typeof SORTABLE_COLUMNS[number];
+
+function parseSort(raw: string | undefined): { column: SortableColumn; ascending: boolean } {
+  const fallback = { column: 'created_at' as SortableColumn, ascending: false };
+  if (!raw) return fallback;
+  const ascending = !raw.startsWith('-');
+  const column = ascending ? raw : raw.slice(1);
+  if (!(SORTABLE_COLUMNS as readonly string[]).includes(column)) return fallback;
+  return { column: column as SortableColumn, ascending };
+}
 
 export default async function ContactsPage({
   searchParams,
@@ -32,6 +54,8 @@ export default async function ContactsPage({
     ? (params.source as ContactSource)
     : null;
   const eventId = params.event_id && params.event_id !== 'all' ? params.event_id : null;
+  const contributor = (params.contributor ?? '').trim().toLowerCase();
+  const sort = parseSort(params.sort);
   const page = Math.max(1, parseInt(params.page ?? '1', 10) || 1);
 
   const supabase = await createClient();
@@ -55,10 +79,16 @@ export default async function ContactsPage({
   }
 
   // Build the master_contacts query with filters, server-side pagination.
+  // Primary sort comes from the search param (allowlisted to one of
+  // SORTABLE_COLUMNS); created_at desc is appended as a stable tiebreaker so
+  // rows with the same sort value have a deterministic order.
   let query = supabase
     .from('master_contacts')
     .select('*', { count: 'exact' })
-    .order('created_at', { ascending: false });
+    .order(sort.column, { ascending: sort.ascending, nullsFirst: false });
+  if (sort.column !== 'created_at') {
+    query = query.order('created_at', { ascending: false });
+  }
 
   if (q) {
     const safe = q.replace(/[%,]/g, ' ');
@@ -69,6 +99,7 @@ export default async function ContactsPage({
   if (optEvent !== null) query = query.eq('sms_opt_in_event_updates', optEvent);
   if (optMarketing !== null) query = query.eq('sms_opt_in_marketing', optMarketing);
   if (source) query = query.eq('source', source);
+  if (contributor) query = query.eq('contributor_name', contributor);
   if (restrictToIds) query = query.in('id', restrictToIds);
 
   const from = (page - 1) * PAGE_SIZE;
@@ -93,6 +124,8 @@ export default async function ContactsPage({
     }
   }
 
+  const pastContributors = await listContributors();
+
   return (
     <ContactsManager
       contacts={masterContacts}
@@ -106,12 +139,15 @@ export default async function ContactsPage({
         title: e.title as string,
         date_start: e.date_start as string,
       }))}
+      pastContributors={pastContributors}
       filters={{
         q,
         opt_event: params.opt_event ?? '',
         opt_marketing: params.opt_marketing ?? '',
         source: params.source ?? '',
         event_id: params.event_id ?? '',
+        contributor: params.contributor ?? '',
+        sort: params.sort ?? '',
       }}
     />
   );

@@ -35,11 +35,16 @@ const EMPTY_MAPPING: SheetMapping = {
   sms_opt_in: undefined,
 };
 
-export function GoogleSheetsSyncDialog() {
+interface GoogleSheetsSyncDialogProps {
+  pastContributors: string[];
+}
+
+export function GoogleSheetsSyncDialog({ pastContributors }: GoogleSheetsSyncDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>('url');
   const [url, setUrl] = useState('');
+  const [contributor, setContributor] = useState('');
   const [detected, setDetected] = useState<SheetHeadersResult | null>(null);
   const [mapping, setMapping] = useState<SheetMapping>(EMPTY_MAPPING);
   const [previewResult, setPreviewResult] = useState<SheetSyncResult | null>(null);
@@ -50,6 +55,7 @@ export function GoogleSheetsSyncDialog() {
   function reset() {
     setStep('url');
     setUrl('');
+    setContributor('');
     setDetected(null);
     setMapping(EMPTY_MAPPING);
     setPreviewResult(null);
@@ -92,10 +98,14 @@ export function GoogleSheetsSyncDialog() {
     });
   }
 
+  function normalizedContributor(): string | null {
+    return contributor.trim().toLowerCase() || null;
+  }
+
   function handlePreview() {
     setError(null);
     startTransition(async () => {
-      const res = await previewGoogleSheetSync(url, mapping);
+      const res = await previewGoogleSheetSync(url, mapping, normalizedContributor());
       if (!res.success || !res.data) {
         setError(res.error ?? 'Preview failed.');
         return;
@@ -108,7 +118,7 @@ export function GoogleSheetsSyncDialog() {
   function handleApply() {
     setError(null);
     startTransition(async () => {
-      const res = await runGoogleSheetSync(url, mapping);
+      const res = await runGoogleSheetSync(url, mapping, normalizedContributor());
       if (!res.success || !res.data) {
         setError(res.error ?? 'Sync failed.');
         return;
@@ -169,6 +179,26 @@ export function GoogleSheetsSyncDialog() {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="sheet-contributor">Contributed by (optional)</Label>
+              <Input
+                id="sheet-contributor"
+                list="sheet-past-contributors"
+                value={contributor}
+                onChange={(e) => setContributor(e.target.value)}
+                placeholder="e.g. alice"
+                autoComplete="off"
+              />
+              <datalist id="sheet-past-contributors">
+                {pastContributors.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+              <p className="text-muted-foreground text-xs">
+                Who supplied this list. Applies only to new contacts —
+                existing contacts keep whoever first introduced them.
+              </p>
             </div>
             <DialogFooter>
               <Button variant="ghost" onClick={close} disabled={pending}>Cancel</Button>

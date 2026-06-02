@@ -86,6 +86,7 @@ export interface MasterContact {
   email_opt_out: boolean;
   source: ContactSource;
   notes: string | null;
+  contributor_name: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -65,6 +65,13 @@ export interface ProcessOptions {
   source?: ContactSource;
   /** When true, validate + categorize but do not write inserts or updates. */
   dryRun?: boolean;
+  /**
+   * Free-text label for who supplied this batch (e.g. "alice smith").
+   * Normalized to lowercase + trimmed by the caller. Applied only to
+   * newly inserted rows — the original contributor keeps the credit if
+   * the same email shows up in a later batch from someone else.
+   */
+  contributorName?: string | null;
 }
 
 export async function processMasterContactsCsv(
@@ -76,6 +83,7 @@ export async function processMasterContactsCsv(
   const opts: ProcessOptions = typeof options === 'string' ? { source: options } : options;
   const source: ContactSource = opts.source ?? 'csv_import';
   const dryRun = opts.dryRun ?? false;
+  const contributorName = opts.contributorName?.trim().toLowerCase() || null;
   const outcomes: RowOutcome[] = [];
   const skippedDetails: Array<{ row: number; reason: string }> = [];
 
@@ -156,6 +164,7 @@ export async function processMasterContactsCsv(
     sms_opt_in_event_updates: boolean;
     sms_opt_in_marketing: boolean;
     source: ContactSource;
+    contributor_name?: string | null;
   }
 
   const toInsert: Insertable[] = [];
@@ -182,6 +191,7 @@ export async function processMasterContactsCsv(
         sms_opt_in_event_updates: v.sms_event,
         sms_opt_in_marketing: v.sms_marketing,
         source,
+        ...(contributorName ? { contributor_name: contributorName } : {}),
       });
       insertMeta.push({ rowIndex: v.rowIndex, email: v.email });
       continue;

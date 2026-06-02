@@ -982,6 +982,32 @@ export async function getMasterContactsForPriorEvent(
   return { success: true, data: enriched };
 }
 
+export async function getMasterContactsByContributor(
+  eventId: string,
+  contributorName: string
+): Promise<ActionResponse<PickableMasterContact[]>> {
+  const supabase = await createClient();
+  const normalized = contributorName.trim().toLowerCase();
+  if (!normalized) return { success: true, data: [] };
+
+  const { data, error } = await supabase
+    .from('master_contacts')
+    .select(
+      'id, first_name, last_name, email, phone, sms_opt_in_event_updates, sms_opt_in_marketing'
+    )
+    .eq('contributor_name', normalized)
+    .order('last_name', { ascending: true })
+    .limit(MASTER_PICK_LIMIT);
+  if (error) return { success: false, error: error.message };
+
+  const enriched = await attachAlreadyInEventFlags(
+    supabase,
+    eventId,
+    (data ?? []) as PickableMasterContact[]
+  );
+  return { success: true, data: enriched.filter((c) => !c.isAlreadyInEvent) };
+}
+
 export async function getMasterContactsByOptIn(
   eventId: string,
   optInEvent: boolean,

@@ -1,11 +1,9 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import Papa from 'papaparse';
 import {
   Plus,
-  Upload,
   Pencil,
   Trash2,
   Search,
@@ -49,12 +47,11 @@ import {
   createContact,
   updateContact,
   deleteContact,
-  importContacts,
   sendInvitations,
   sendSaveTheDates,
   bulkUpdateContactChannel,
 } from './actions';
-import type { ContactInput, CsvRow, ImportResult, InvitationScope, InvitationResult, SaveTheDateScope, SaveTheDateResult } from './actions';
+import type { ContactInput, InvitationScope, InvitationResult, SaveTheDateScope, SaveTheDateResult } from './actions';
 import type { ContactWithMaster, CsvImport, InvitationChannel } from '@/types/database';
 import { formatDate } from '@/lib/utils';
 import { AddFromMasterSheet } from './add-from-master-sheet';
@@ -64,6 +61,7 @@ interface ContactsManagerProps {
   csvImports: CsvImport[];
   eventId: string;
   priorEvents: { id: string; title: string }[];
+  pastContributors: string[];
 }
 
 const emptyForm = {
@@ -73,39 +71,6 @@ const emptyForm = {
   phone: '',
   invitation_channel: 'email' as InvitationChannel,
 };
-
-const HEADER_ALIASES: Record<string, string> = {
-  fname: 'first_name',
-  firstname: 'first_name',
-  'first name': 'first_name',
-  first: 'first_name',
-  lname: 'last_name',
-  lastname: 'last_name',
-  'last name': 'last_name',
-  last: 'last_name',
-  email_address: 'email',
-  emailaddress: 'email',
-  'e-mail': 'email',
-  mobile: 'phone',
-  phone_number: 'phone',
-  phonenumber: 'phone',
-  telephone: 'phone',
-  tel: 'phone',
-  cell: 'phone',
-  channel: 'invitation_channel',
-  invite_channel: 'invitation_channel',
-};
-
-function normalizeHeader(header: string): string {
-  const cleaned = header.trim().toLowerCase().replace(/[_\s-]+/g, '_');
-  // Direct match
-  if (['first_name', 'last_name', 'email', 'phone', 'invitation_channel'].includes(cleaned)) {
-    return cleaned;
-  }
-  // Alias match (try both with underscores and without)
-  const withoutUnderscores = cleaned.replace(/_/g, '');
-  return HEADER_ALIASES[cleaned] ?? HEADER_ALIASES[withoutUnderscores] ?? cleaned;
-}
 
 function channelLabel(channel: InvitationChannel): string {
   switch (channel) {
@@ -140,6 +105,7 @@ export function ContactsManager({
   csvImports,
   eventId,
   priorEvents,
+  pastContributors,
 }: ContactsManagerProps) {
   const router = useRouter();
 
@@ -149,14 +115,6 @@ export function ContactsManager({
   const [form, setForm] = useState(emptyForm);
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // CSV dialog state
-  const [csvDialogOpen, setCsvDialogOpen] = useState(false);
-  const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [csvParsing, setCsvParsing] = useState(false);
-  const [csvError, setCsvError] = useState<string | null>(null);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Invitation dialog state
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -264,108 +222,6 @@ export function ContactsManager({
     }
 
     router.refresh();
-  }
-
-  // CSV dialog handlers
-  function openCsvDialog() {
-    setCsvFile(null);
-    setCsvError(null);
-    setCsvParsing(false);
-    setImportResult(null);
-    setCsvDialogOpen(true);
-  }
-
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null;
-    setCsvError(null);
-    setImportResult(null);
-
-    if (file && file.size > 5 * 1024 * 1024) {
-      setCsvFile(null);
-      setCsvError('CSV file must be under 5 MB.');
-      e.target.value = '';
-      return;
-    }
-
-    setCsvFile(file);
-  }
-
-  async function handleImport() {
-    if (!csvFile) return;
-
-    setCsvParsing(true);
-    setCsvError(null);
-
-    try {
-      const text = await csvFile.text();
-
-      const parsed = Papa.parse<Record<string, string>>(text, {
-        header: true,
-        skipEmptyLines: true,
-        transformHeader: normalizeHeader,
-      });
-
-      if (parsed.errors.length > 0 && parsed.data.length === 0) {
-        setCsvError('Failed to parse CSV file. Please check the format.');
-        setCsvParsing(false);
-        return;
-      }
-
-      // Validate required headers
-      const headers = parsed.meta.fields ?? [];
-      const hasFirstName = headers.includes('first_name');
-      const hasLastName = headers.includes('last_name');
-      const hasEmail = headers.includes('email');
-      const hasPhone = headers.includes('phone');
-
-      if (!hasFirstName || !hasLastName) {
-        setCsvError(
-          'CSV must include "first_name" and "last_name" columns (or recognized aliases like "fname", "lname").'
-        );
-        setCsvParsing(false);
-        return;
-      }
-
-      if (!hasEmail) {
-        setCsvError(
-          'CSV must include an "email" column. Phone-only contacts are no longer supported via CSV — add them manually.'
-        );
-        setCsvParsing(false);
-        return;
-      }
-      // hasPhone is now informational; phone column is optional.
-      void hasPhone;
-
-      const rows: CsvRow[] = parsed.data.map((row) => ({
-        first_name: row.first_name?.trim() ?? '',
-        last_name: row.last_name?.trim() ?? '',
-        email: row.email?.trim() || null,
-        phone: row.phone?.trim() || null,
-        invitation_channel:
-          (row.invitation_channel?.trim() as InvitationChannel) || null,
-      }));
-
-      const result = await importContacts(eventId, rows, csvFile.name);
-
-      if (!result.success) {
-        setCsvError(result.error ?? 'Import failed.');
-        setCsvParsing(false);
-        return;
-      }
-
-      setImportResult(result.data!);
-      setCsvParsing(false);
-    } catch {
-      setCsvError('An error occurred while processing the file.');
-      setCsvParsing(false);
-    }
-  }
-
-  function closeCsvDialog() {
-    setCsvDialogOpen(false);
-    if (importResult) {
-      router.refresh();
-    }
   }
 
   // Invitation handlers
@@ -529,11 +385,7 @@ export function ContactsManager({
               </Button>
             </>
           )}
-          <AddFromMasterSheet eventId={eventId} priorEvents={priorEvents} />
-          <Button variant="outline" onClick={openCsvDialog}>
-            <Upload className="mr-2 h-4 w-4" />
-            Upload CSV
-          </Button>
+          <AddFromMasterSheet eventId={eventId} priorEvents={priorEvents} pastContributors={pastContributors} />
           <Button onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" />
             Add Contact
@@ -553,13 +405,10 @@ export function ContactsManager({
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <p className="text-muted-foreground mb-4">
-              No contacts yet. Add contacts manually or upload a CSV file.
+              No contacts yet. Pick from your master list or add one manually.
             </p>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={openCsvDialog}>
-                <Upload className="mr-2 h-4 w-4" />
-                Upload CSV
-              </Button>
+              <AddFromMasterSheet eventId={eventId} priorEvents={priorEvents} pastContributors={pastContributors} />
               <Button variant="outline" onClick={openCreate}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add Contact
@@ -1120,139 +969,6 @@ export function ContactsManager({
         </DialogContent>
       </Dialog>
 
-      {/* CSV Upload Dialog */}
-      <Dialog open={csvDialogOpen} onOpenChange={(open) => {
-        if (!open) closeCsvDialog();
-        else setCsvDialogOpen(true);
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {importResult ? 'Import Complete' : 'Upload CSV'}
-            </DialogTitle>
-            <DialogDescription>
-              {importResult
-                ? 'Your contacts have been imported.'
-                : 'Upload a CSV file to import contacts in bulk.'}
-            </DialogDescription>
-          </DialogHeader>
-
-          {importResult ? (
-            /* Import result summary */
-            <div className="space-y-4">
-              <div className="flex items-start gap-3 rounded-lg border border-green-300 bg-green-50 p-4 dark:border-green-700 dark:bg-green-950">
-                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
-                <div className="space-y-1 text-sm">
-                  <p className="font-medium text-green-800 dark:text-green-200">
-                    {importResult.addedToEvent} of {importResult.totalRows}{' '}
-                    contacts added to this event
-                  </p>
-                  <ul className="text-green-700 dark:text-green-300 list-disc list-inside space-y-0.5">
-                    {importResult.addedToMaster > 0 && (
-                      <li>{importResult.addedToMaster} new in master list</li>
-                    )}
-                    {importResult.updatedInMaster > 0 && (
-                      <li>{importResult.updatedInMaster} matched existing master contacts</li>
-                    )}
-                    {importResult.alreadyInEvent > 0 && (
-                      <li>{importResult.alreadyInEvent} already linked to this event</li>
-                    )}
-                    {importResult.optInEventPromoted > 0 && (
-                      <li>
-                        {importResult.optInEventPromoted} SMS event-update opt-in
-                        {importResult.optInEventPromoted === 1 ? '' : 's'} added
-                      </li>
-                    )}
-                    {importResult.optInMarketingPromoted > 0 && (
-                      <li>
-                        {importResult.optInMarketingPromoted} SMS marketing opt-in
-                        {importResult.optInMarketingPromoted === 1 ? '' : 's'} added
-                      </li>
-                    )}
-                    {importResult.skippedCount > 0 && (
-                      <li>{importResult.skippedCount} skipped (see below)</li>
-                    )}
-                  </ul>
-                </div>
-              </div>
-
-              {importResult.skippedDetails.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Skipped rows:</p>
-                  <div className="max-h-40 overflow-y-auto rounded-md border p-3 text-xs">
-                    {importResult.skippedDetails.map((s, i) => (
-                      <div key={i} className="text-muted-foreground py-0.5">
-                        Row {s.row}: {s.reason}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <DialogFooter>
-                <Button onClick={closeCsvDialog}>Done</Button>
-              </DialogFooter>
-            </div>
-          ) : (
-            /* File upload form */
-            <div className="space-y-4">
-              {csvError && (
-                <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
-                  {csvError}
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="csv-file">Choose file</Label>
-                <Input
-                  ref={fileInputRef}
-                  id="csv-file"
-                  type="file"
-                  accept=".csv,.tsv,.txt"
-                  onChange={handleFileChange}
-                />
-              </div>
-
-              <div className="text-muted-foreground rounded-md border p-3 text-xs leading-relaxed">
-                <p className="mb-1 font-medium text-foreground">
-                  Expected columns:
-                </p>
-                <p>
-                  <strong>first_name</strong>, <strong>last_name</strong>,{' '}
-                  <strong>email</strong> (required)
-                </p>
-                <p>
-                  <strong>phone</strong> (optional)
-                </p>
-                <p>
-                  <strong>invitation_channel</strong> (optional: email, sms,
-                  both, none)
-                </p>
-                <p className="mt-1">
-                  Common aliases like &quot;fname&quot;, &quot;lastname&quot;,
-                  &quot;mobile&quot; are also recognized.
-                </p>
-              </div>
-
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={closeCsvDialog}
-                  disabled={csvParsing}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleImport}
-                  disabled={!csvFile || csvParsing}
-                >
-                  {csvParsing ? 'Importing...' : 'Import'}
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

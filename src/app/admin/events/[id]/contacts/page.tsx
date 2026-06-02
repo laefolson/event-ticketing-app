@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { ContactsManager } from './contacts-manager';
+import { listContributors } from '@/app/admin/contacts/actions';
 
 interface ContactsPageProps {
   params: Promise<{ id: string }>;
@@ -47,6 +48,8 @@ export default async function ContactsPage({ params }: ContactsPageProps) {
     .neq('id', id)
     .order('date_start', { ascending: false });
 
+  const pastContributors = await listContributors();
+
   return (
     <ContactsManager
       contacts={contacts ?? []}
@@ -56,6 +59,7 @@ export default async function ContactsPage({ params }: ContactsPageProps) {
         id: e.id as string,
         title: e.title as string,
       }))}
+      pastContributors={pastContributors}
     />
   );
 }

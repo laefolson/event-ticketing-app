@@ -90,6 +90,7 @@ export function ContactDetail({
         <CardTitle>Contact info</CardTitle>
         <span className="text-xs text-muted-foreground">
           Source: {SOURCE_LABEL[contact.source]}
+          {contact.contributor_name ? ` · Contributed by ${contact.contributor_name}` : ''}
         </span>
       </CardHeader>
       <CardContent>
