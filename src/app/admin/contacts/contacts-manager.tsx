@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Search, Download, ArrowRight, Users, ArrowUpDown, ArrowDown, ArrowUp, Trash2, AlertTriangle } from 'lucide-react';
+import { Search, Download, ArrowRight, Users, ArrowUpDown, ArrowDown, ArrowUp, Trash2, AlertTriangle, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -18,8 +18,12 @@ import {
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/utils';
+import { describeTwilioError } from '@/lib/twilio-error-codes';
 import { AddContactSheet } from './add-contact-sheet';
 import { ImportCsvDialog } from './import-csv-dialog';
 import { GoogleSheetsSyncDialog } from './google-sheets-sync-dialog';
@@ -30,9 +34,15 @@ import {
 } from './actions';
 import type { MasterContact } from '@/types/database';
 
+interface LastSmsStatus {
+  status: string;
+  error_code: string | null;
+}
+
 interface Props {
   contacts: MasterContact[];
   eventCounts: Record<string, number>;
+  lastSms: Record<string, LastSmsStatus>;
   total: number;
   page: number;
   totalPages: number;
@@ -67,7 +77,7 @@ const SOURCE_LABEL: Record<MasterContact['source'], string> = {
 };
 
 export function ContactsManager({
-  contacts, eventCounts, total, page, totalPages, pageSize, events, pastContributors, filters,
+  contacts, eventCounts, lastSms, total, page, totalPages, pageSize, events, pastContributors, filters,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -189,6 +199,7 @@ export function ContactsManager({
   );
 
   return (
+    <TooltipProvider delayDuration={150}>
     <div className="container mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Contacts</h1>
@@ -371,7 +382,12 @@ export function ContactsManager({
                       </Link>
                     </TableCell>
                     <TableCell>{c.email}</TableCell>
-                    <TableCell>{c.phone ?? '—'}</TableCell>
+                    <TableCell>
+                      <PhoneCell
+                        phone={c.phone}
+                        lastSms={lastSms[c.id]}
+                      />
+                    </TableCell>
                     <TableCell>
                       {c.sms_opt_in_event_updates
                         ? <Badge variant="default">Opted in</Badge>
@@ -503,6 +519,36 @@ export function ContactsManager({
         </DialogContent>
       </Dialog>
     </div>
+    </TooltipProvider>
+  );
+}
+
+function PhoneCell({
+  phone,
+  lastSms,
+}: {
+  phone: string | null;
+  lastSms: LastSmsStatus | undefined;
+}) {
+  const failed = lastSms && (lastSms.status === 'failed' || lastSms.status === 'bounced');
+  if (!failed) return <>{phone ?? '—'}</>;
+  const reason = describeTwilioError(lastSms!.error_code) ??
+    (lastSms!.error_code ? `Error ${lastSms!.error_code}` : 'Delivery failed');
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span>{phone ?? '—'}</span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="text-destructive inline-flex" aria-label={`Last SMS failed: ${reason}`}>
+            <AlertCircle className="h-3.5 w-3.5" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="text-xs font-medium">Last SMS undelivered</p>
+          <p className="text-xs">{reason}</p>
+        </TooltipContent>
+      </Tooltip>
+    </span>
   );
 }
 

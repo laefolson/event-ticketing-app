@@ -111,16 +111,41 @@ export default async function ContactsPage({
   const total = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  // Per-contact event counts for the visible page
+  // Per-contact event counts for the visible page, plus the most-recent
+  // SMS delivery status (so we can surface a "failed SMS" marker on rows
+  // whose last attempt was a landline / unreachable / opt-out).
   const eventCountByContactId = new Map<string, number>();
+  const lastSmsByContactId = new Map<string, { status: string; error_code: string | null }>();
   if (masterContacts.length > 0) {
+    const masterIds = masterContacts.map((c) => c.id);
     const { data: joinRows } = await supabase
       .from('contacts')
-      .select('master_contact_id')
-      .in('master_contact_id', masterContacts.map((c) => c.id));
+      .select('id, master_contact_id')
+      .in('master_contact_id', masterIds);
+    const contactIdToMaster = new Map<string, string>();
     for (const row of joinRows ?? []) {
       const id = row.master_contact_id as string;
       eventCountByContactId.set(id, (eventCountByContactId.get(id) ?? 0) + 1);
+      contactIdToMaster.set(row.id as string, id);
+    }
+
+    const contactIds = Array.from(contactIdToMaster.keys());
+    if (contactIds.length > 0) {
+      // Newest-first; first hit per master is the most recent SMS attempt.
+      const { data: logs } = await supabase
+        .from('invitation_logs')
+        .select('contact_id, status, error_code, sent_at')
+        .eq('channel', 'sms')
+        .in('contact_id', contactIds)
+        .order('sent_at', { ascending: false });
+      for (const log of logs ?? []) {
+        const masterId = contactIdToMaster.get(log.contact_id as string);
+        if (!masterId || lastSmsByContactId.has(masterId)) continue;
+        lastSmsByContactId.set(masterId, {
+          status: log.status as string,
+          error_code: (log.error_code as string | null) ?? null,
+        });
+      }
     }
   }
 
@@ -130,6 +155,7 @@ export default async function ContactsPage({
     <ContactsManager
       contacts={masterContacts}
       eventCounts={Object.fromEntries(eventCountByContactId)}
+      lastSms={Object.fromEntries(lastSmsByContactId)}
       total={total}
       page={page}
       totalPages={totalPages}
