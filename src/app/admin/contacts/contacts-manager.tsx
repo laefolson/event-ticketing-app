@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/utils';
-import { describeTwilioError } from '@/lib/twilio-error-codes';
+import { deliveryErrorLabel } from '@/lib/delivery-errors';
 import { AddContactSheet } from './add-contact-sheet';
 import { ImportCsvDialog } from './import-csv-dialog';
 import { GoogleSheetsSyncDialog } from './google-sheets-sync-dialog';
@@ -34,15 +34,20 @@ import {
 } from './actions';
 import type { MasterContact } from '@/types/database';
 
-interface LastSmsStatus {
+interface LastDeliveryStatus {
   status: string;
   error_code: string | null;
+}
+
+interface LastDeliveryByChannel {
+  sms?: LastDeliveryStatus;
+  email?: LastDeliveryStatus;
 }
 
 interface Props {
   contacts: MasterContact[];
   eventCounts: Record<string, number>;
-  lastSms: Record<string, LastSmsStatus>;
+  lastDelivery: Record<string, LastDeliveryByChannel>;
   total: number;
   page: number;
   totalPages: number;
@@ -77,7 +82,7 @@ const SOURCE_LABEL: Record<MasterContact['source'], string> = {
 };
 
 export function ContactsManager({
-  contacts, eventCounts, lastSms, total, page, totalPages, pageSize, events, pastContributors, filters,
+  contacts, eventCounts, lastDelivery, total, page, totalPages, pageSize, events, pastContributors, filters,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -381,11 +386,20 @@ export function ContactsManager({
                         {`${c.first_name} ${c.last_name}`.trim() || '—'}
                       </Link>
                     </TableCell>
-                    <TableCell>{c.email}</TableCell>
                     <TableCell>
-                      <PhoneCell
-                        phone={c.phone}
-                        lastSms={lastSms[c.id]}
+                      <DeliveryCell
+                        value={c.email}
+                        channel="email"
+                        last={lastDelivery[c.id]?.email}
+                        failedLabel="Last email bounced"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <DeliveryCell
+                        value={c.phone}
+                        channel="sms"
+                        last={lastDelivery[c.id]?.sms}
+                        failedLabel="Last SMS undelivered"
                       />
                     </TableCell>
                     <TableCell>
@@ -523,28 +537,31 @@ export function ContactsManager({
   );
 }
 
-function PhoneCell({
-  phone,
-  lastSms,
+function DeliveryCell({
+  value,
+  channel,
+  last,
+  failedLabel,
 }: {
-  phone: string | null;
-  lastSms: LastSmsStatus | undefined;
+  value: string | null;
+  channel: 'sms' | 'email';
+  last: LastDeliveryStatus | undefined;
+  failedLabel: string;
 }) {
-  const failed = lastSms && (lastSms.status === 'failed' || lastSms.status === 'bounced');
-  if (!failed) return <>{phone ?? '—'}</>;
-  const reason = describeTwilioError(lastSms!.error_code) ??
-    (lastSms!.error_code ? `Error ${lastSms!.error_code}` : 'Delivery failed');
+  const failed = last && (last.status === 'failed' || last.status === 'bounced');
+  if (!failed) return <>{value ?? '—'}</>;
+  const reason = deliveryErrorLabel(channel, last!.error_code);
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span>{phone ?? '—'}</span>
+      <span>{value ?? '—'}</span>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="text-destructive inline-flex" aria-label={`Last SMS failed: ${reason}`}>
+          <span className="text-destructive inline-flex" aria-label={`${failedLabel}: ${reason}`}>
             <AlertCircle className="h-3.5 w-3.5" />
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          <p className="text-xs font-medium">Last SMS undelivered</p>
+          <p className="text-xs font-medium">{failedLabel}</p>
           <p className="text-xs">{reason}</p>
         </TooltipContent>
       </Tooltip>

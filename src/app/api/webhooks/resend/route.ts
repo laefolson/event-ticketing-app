@@ -6,6 +6,11 @@ interface ResendWebhookPayload {
   type: string;
   data: {
     email_id: string;
+    bounce?: {
+      type?: string;     // "Permanent" | "Transient" | "Undetermined"
+      subType?: string;  // "MailboxFull", "Suppressed", "General", etc.
+      message?: string;
+    };
     [key: string]: unknown;
   };
 }
@@ -75,15 +80,25 @@ export async function POST(request: NextRequest) {
 
     case 'email.bounced':
     case 'email.complained': {
+      // Persist the bounce reason so the admin UI can show why ("Mailbox
+      // full", "Spam complaint", etc.). Resend gives subType on bounces;
+      // complaints have no bounce object so we tag them explicitly.
+      const errorCode =
+        payload.type === 'email.complained'
+          ? 'SpamComplaint'
+          : payload.data.bounce?.subType ?? payload.data.bounce?.type ?? null;
+
       const { error } = await supabase
         .from('invitation_logs')
-        .update({ status: 'bounced' })
+        .update({ status: 'bounced', error_code: errorCode })
         .eq('provider_message_id', emailId);
 
       if (error) {
         console.error(`Resend webhook: failed to update status for ${emailId}:`, error.message);
       } else {
-        console.log(`Resend webhook: email ${emailId} marked as bounced (${payload.type})`);
+        console.log(
+          `Resend webhook: email ${emailId} marked as bounced (${payload.type}, code=${errorCode ?? 'none'})`
+        );
       }
       break;
     }

@@ -10,7 +10,7 @@ import {
   Table, TableHeader, TableRow, TableHead, TableBody, TableCell,
 } from '@/components/ui/table';
 import { formatDate } from '@/lib/utils';
-import { describeTwilioError } from '@/lib/twilio-error-codes';
+import { deliveryErrorLabel } from '@/lib/delivery-errors';
 import type {
   Event, Contact, InvitationLog, MasterContact, Ticket,
 } from '@/types/database';
@@ -250,8 +250,7 @@ export default async function ContactDetailPage({
                         </Badge>
                         {(log.status === 'failed' || log.status === 'bounced') && (
                           <span className="text-xs text-destructive">
-                            {describeTwilioError(log.error_code) ??
-                              (log.error_code ? `Error ${log.error_code}` : 'Delivery failed')}
+                            {deliveryErrorLabel(log.channel, log.error_code)}
                           </span>
                         )}
                       </div>

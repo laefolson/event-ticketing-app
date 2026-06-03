@@ -112,10 +112,12 @@ export default async function ContactsPage({
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // Per-contact event counts for the visible page, plus the most-recent
-  // SMS delivery status (so we can surface a "failed SMS" marker on rows
-  // whose last attempt was a landline / unreachable / opt-out).
+  // delivery status per channel (so we can flag failed SMS / bounced
+  // email next to the relevant value in the table).
+  interface ChannelStatus { status: string; error_code: string | null }
+  interface LastDelivery { sms?: ChannelStatus; email?: ChannelStatus }
   const eventCountByContactId = new Map<string, number>();
-  const lastSmsByContactId = new Map<string, { status: string; error_code: string | null }>();
+  const lastDeliveryByContactId = new Map<string, LastDelivery>();
   if (masterContacts.length > 0) {
     const masterIds = masterContacts.map((c) => c.id);
     const { data: joinRows } = await supabase
@@ -131,20 +133,25 @@ export default async function ContactsPage({
 
     const contactIds = Array.from(contactIdToMaster.keys());
     if (contactIds.length > 0) {
-      // Newest-first; first hit per master is the most recent SMS attempt.
+      // Newest-first; first SMS hit and first email hit per master are
+      // the most recent attempts on each channel.
       const { data: logs } = await supabase
         .from('invitation_logs')
-        .select('contact_id, status, error_code, sent_at')
-        .eq('channel', 'sms')
+        .select('contact_id, channel, status, error_code, sent_at')
+        .in('channel', ['sms', 'email'])
         .in('contact_id', contactIds)
         .order('sent_at', { ascending: false });
       for (const log of logs ?? []) {
         const masterId = contactIdToMaster.get(log.contact_id as string);
-        if (!masterId || lastSmsByContactId.has(masterId)) continue;
-        lastSmsByContactId.set(masterId, {
+        if (!masterId) continue;
+        const channel = log.channel as 'sms' | 'email';
+        const existing = lastDeliveryByContactId.get(masterId) ?? {};
+        if (existing[channel]) continue;
+        existing[channel] = {
           status: log.status as string,
           error_code: (log.error_code as string | null) ?? null,
-        });
+        };
+        lastDeliveryByContactId.set(masterId, existing);
       }
     }
   }
@@ -155,7 +162,7 @@ export default async function ContactsPage({
     <ContactsManager
       contacts={masterContacts}
       eventCounts={Object.fromEntries(eventCountByContactId)}
-      lastSms={Object.fromEntries(lastSmsByContactId)}
+      lastDelivery={Object.fromEntries(lastDeliveryByContactId)}
       total={total}
       page={page}
       totalPages={totalPages}
