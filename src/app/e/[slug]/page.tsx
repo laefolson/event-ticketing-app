@@ -291,7 +291,6 @@ export default async function EventPage({ params }: EventPageProps) {
             <div className="grid gap-4 sm:grid-cols-2">
               {tiers.map((tier) => {
                 const soldOut = tier.quantity_sold >= tier.quantity_total;
-                const remaining = tier.quantity_total - tier.quantity_sold;
 
                 const cardInner = (
                   <Card
@@ -315,12 +314,11 @@ export default async function EventPage({ params }: EventPageProps) {
                       {tier.description && (
                         <p className="text-muted-foreground mt-2 text-sm">{tier.description}</p>
                       )}
-                      <div className="text-muted-foreground mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                        {!soldOut && <span>{remaining} remaining</span>}
-                        {tier.max_per_contact !== null && (
-                          <span>Max {tier.max_per_contact} per person</span>
-                        )}
-                      </div>
+                      {tier.max_per_contact !== null && (
+                        <div className="text-muted-foreground mt-3 text-xs">
+                          Max {tier.max_per_contact} per person
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 );

@@ -113,7 +113,7 @@ export async function createCheckoutSession(
     if (item.quantity > remaining) {
       return {
         success: false,
-        error: `Only ${remaining} ticket${remaining === 1 ? '' : 's'} remaining for ${tier.name}.`,
+        error: `Not enough ${tier.name} tickets available. Please reduce the quantity.`,
       };
     }
 

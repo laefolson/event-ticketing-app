@@ -136,11 +136,6 @@ export function CheckoutForm({ eventId, slug, tiers, venueName }: CheckoutFormPr
                   </div>
                   <p className="text-muted-foreground text-sm">
                     {tier.price_cents > 0 ? formatCents(tier.price_cents) : 'Free'}
-                    {!soldOut && (
-                      <span className="ml-2">
-                        · {remaining} remaining
-                      </span>
-                    )}
                   </p>
                   {tier.description && (
                     <p className="text-muted-foreground mt-1 text-xs">

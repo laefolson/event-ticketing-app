@@ -98,7 +98,7 @@ export async function submitRsvp(
   if (quantity > remaining) {
     return {
       success: false,
-      error: `Only ${remaining} ticket${remaining === 1 ? '' : 's'} remaining.`,
+      error: 'Not enough tickets available. Please reduce the quantity.',
     };
   }
 
