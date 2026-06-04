@@ -98,11 +98,16 @@ export async function middleware(request: NextRequest) {
     // Update last_activity timestamp. `secure` must be false in dev — over
     // HTTP browsers silently drop Secure cookies, which would mean the
     // timeout cookie never persists locally and the timeout never fires.
+    // maxAge must outlive SESSION_TIMEOUT_MS so the cookie survives a
+    // browser restart with a stale timestamp — otherwise it's a session
+    // cookie, gets evicted on browser close, and the timeout check on the
+    // next visit sees no cookie and silently treats the user as fresh.
     response.cookies.set('last_activity', String(Date.now()), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
+      maxAge: 60 * 60 * 24 * 30, // 30 days
     });
   }
 
