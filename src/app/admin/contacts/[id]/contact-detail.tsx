@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Trash2, AlertTriangle } from 'lucide-react';
+import { Trash2, AlertTriangle, Merge } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Card, CardContent, CardHeader, CardTitle,
@@ -17,7 +17,14 @@ import {
   DialogTitle, DialogTrigger, DialogClose,
 } from '@/components/ui/dialog';
 import { formatDate } from '@/lib/utils';
-import { updateMasterContact, deleteMasterContact } from '../actions';
+import {
+  updateMasterContact,
+  deleteMasterContact,
+  findMasterByEmail,
+  getMergePreview,
+  mergeMasterContacts,
+  type MergePreview,
+} from '../actions';
 import type { MasterContact } from '@/types/database';
 
 export interface TicketEventSummary {
@@ -48,6 +55,8 @@ export function ContactDetail({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [deleting, startDelete] = useTransition();
+  const [merging, startMerge] = useTransition();
+  const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
   const [form, setForm] = useState({
     first_name: contact.first_name,
     last_name: contact.last_name,
@@ -66,9 +75,41 @@ export function ContactDetail({
       if (res.success) {
         toast.success('Contact updated');
         router.refresh();
-      } else {
-        toast.error(res.error ?? 'Failed to update contact');
+        return;
       }
+      // Unique-email collision is the trigger for the merge flow: the
+      // admin is effectively saying "this contact is actually that one."
+      if (res.error?.toLowerCase().includes('email already exists')) {
+        const lookup = await findMasterByEmail(form.email);
+        if (!lookup.success || !lookup.data || lookup.data.id === contact.id) {
+          toast.error(res.error ?? 'Failed to update contact');
+          return;
+        }
+        const preview = await getMergePreview(contact.id, lookup.data.id);
+        if (!preview.success || !preview.data) {
+          toast.error(preview.error ?? 'Could not build merge preview');
+          return;
+        }
+        setMergePreview(preview.data);
+        return;
+      }
+      toast.error(res.error ?? 'Failed to update contact');
+    });
+  }
+
+  function handleMergeConfirm() {
+    if (!mergePreview) return;
+    startMerge(async () => {
+      const res = await mergeMasterContacts(
+        mergePreview.source.id,
+        mergePreview.target.id
+      );
+      if (!res.success) {
+        toast.error(res.error ?? 'Merge failed');
+        return;
+      }
+      toast.success('Contacts merged');
+      router.push(`/admin/contacts/${mergePreview.target.id}`);
     });
   }
 
@@ -253,6 +294,92 @@ export function ContactDetail({
             </Button>
           </div>
         </form>
+
+        <Dialog
+          open={mergePreview !== null}
+          onOpenChange={(o) => {
+            if (!o && !merging) setMergePreview(null);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Merge className="h-5 w-5" />
+                Merge into existing contact?
+              </DialogTitle>
+              <DialogDescription>
+                {mergePreview && (
+                  <>
+                    <strong>{mergePreview.target.email}</strong> already
+                    belongs to{' '}
+                    <strong>
+                      {`${mergePreview.target.first_name} ${mergePreview.target.last_name}`.trim() ||
+                        mergePreview.target.email}
+                    </strong>
+                    . Merge this contact ({contact.first_name} {contact.last_name})
+                    into them? Their event links, tickets, and SMS opt-ins
+                    will carry over; this record will be deleted.
+                  </>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+
+            {mergePreview && (
+              <div className="space-y-2 rounded-lg border bg-muted/40 p-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Events touched</span>
+                  <span className="font-medium">
+                    {mergePreview.eventsTotal}
+                    {mergePreview.eventsOverlap > 0
+                      ? ` (${mergePreview.eventsOverlap} overlapping)`
+                      : ''}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Tickets transferred</span>
+                  <span className="font-medium">{mergePreview.ticketsTransferred}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    Invitation/message logs transferred
+                  </span>
+                  <span className="font-medium">{mergePreview.invitationsTransferred}</span>
+                </div>
+                {mergePreview.optInsAdded.length > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Opt-ins added to target</span>
+                    <span className="font-medium">
+                      {mergePreview.optInsAdded
+                        .map((o) => (o === 'event_updates' ? 'SMS event' : 'SMS marketing'))
+                        .join(', ')}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setMergePreview(null)}
+                disabled={merging}
+              >
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleMergeConfirm} disabled={merging}>
+                {merging
+                  ? 'Merging…'
+                  : `Merge into ${
+                      mergePreview
+                        ? `${mergePreview.target.first_name} ${mergePreview.target.last_name}`.trim() ||
+                          mergePreview.target.email
+                        : ''
+                    }`}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

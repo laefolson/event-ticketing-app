@@ -107,6 +107,201 @@ export async function updateMasterContact(
   return { success: true, data: data as MasterContact };
 }
 
+/**
+ * Look up a master contact by email. Used by the merge-on-conflict flow
+ * so the client can resolve which contact owns a colliding email and
+ * then offer a merge.
+ */
+export async function findMasterByEmail(
+  email: string
+): Promise<ActionResponse<{ id: string; first_name: string; last_name: string } | null>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('master_contacts')
+    .select('id, first_name, last_name')
+    .eq('email', email.trim().toLowerCase())
+    .maybeSingle();
+  if (error) return { success: false, error: error.message };
+  return { success: true, data: data ? (data as { id: string; first_name: string; last_name: string }) : null };
+}
+
+export interface MergePreview {
+  target: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string | null;
+    sms_opt_in_event_updates: boolean;
+    sms_opt_in_marketing: boolean;
+  };
+  source: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string | null;
+    sms_opt_in_event_updates: boolean;
+    sms_opt_in_marketing: boolean;
+  };
+  eventsTotal: number;
+  eventsOverlap: number;
+  ticketsTransferred: number;
+  invitationsTransferred: number;
+  optInsAdded: Array<'event_updates' | 'marketing'>;
+}
+
+/**
+ * Aggregate what a merge from `fromId` into `toId` would touch, for an
+ * impact preview shown before the admin confirms. Read-only.
+ */
+export async function getMergePreview(
+  fromId: string,
+  toId: string
+): Promise<ActionResponse<MergePreview>> {
+  if (fromId === toId) {
+    return { success: false, error: 'Cannot merge a contact into itself.' };
+  }
+  const supabase = await createClient();
+
+  const { data: pair, error: pairErr } = await supabase
+    .from('master_contacts')
+    .select(
+      'id, first_name, last_name, email, phone, sms_opt_in_event_updates, sms_opt_in_marketing'
+    )
+    .in('id', [fromId, toId]);
+  if (pairErr || !pair || pair.length !== 2) {
+    return { success: false, error: 'Could not load both contacts.' };
+  }
+  const target = pair.find((p) => p.id === toId)!;
+  const source = pair.find((p) => p.id === fromId)!;
+
+  const { data: joinRows, error: joinErr } = await supabase
+    .from('contacts')
+    .select('id, event_id, master_contact_id')
+    .in('master_contact_id', [fromId, toId]);
+  if (joinErr) return { success: false, error: joinErr.message };
+
+  const eventsByMaster = new Map<string, Set<string>>([
+    [fromId, new Set<string>()],
+    [toId, new Set<string>()],
+  ]);
+  const fromJoinIds: string[] = [];
+  const overlapFromJoinIds: string[] = [];
+  for (const r of joinRows ?? []) {
+    eventsByMaster.get(r.master_contact_id as string)?.add(r.event_id as string);
+    if (r.master_contact_id === fromId) fromJoinIds.push(r.id as string);
+  }
+  const toEvents = eventsByMaster.get(toId)!;
+  const fromEvents = eventsByMaster.get(fromId)!;
+  for (const r of joinRows ?? []) {
+    if (r.master_contact_id === fromId && toEvents.has(r.event_id as string)) {
+      overlapFromJoinIds.push(r.id as string);
+    }
+  }
+  const eventsTotal = new Set([...fromEvents, ...toEvents]).size;
+
+  let ticketsTransferred = 0;
+  let invitationsTransferred = 0;
+  if (overlapFromJoinIds.length > 0) {
+    const [{ count: tCount }, { count: lCount }] = await Promise.all([
+      supabase
+        .from('tickets')
+        .select('id', { count: 'exact', head: true })
+        .in('contact_id', overlapFromJoinIds),
+      supabase
+        .from('invitation_logs')
+        .select('id', { count: 'exact', head: true })
+        .in('contact_id', overlapFromJoinIds),
+    ]);
+    ticketsTransferred = tCount ?? 0;
+    invitationsTransferred = lCount ?? 0;
+  }
+  // Tickets/logs on from-only events come along automatically when the
+  // join row's master_contact_id is rewritten; count those too so the
+  // preview reflects the actual touchpoints.
+  if (fromJoinIds.length > overlapFromJoinIds.length) {
+    const fromOnlyJoinIds = fromJoinIds.filter(
+      (id) => !overlapFromJoinIds.includes(id)
+    );
+    if (fromOnlyJoinIds.length > 0) {
+      const [{ count: tCount }, { count: lCount }] = await Promise.all([
+        supabase
+          .from('tickets')
+          .select('id', { count: 'exact', head: true })
+          .in('contact_id', fromOnlyJoinIds),
+        supabase
+          .from('invitation_logs')
+          .select('id', { count: 'exact', head: true })
+          .in('contact_id', fromOnlyJoinIds),
+      ]);
+      ticketsTransferred += tCount ?? 0;
+      invitationsTransferred += lCount ?? 0;
+    }
+  }
+
+  const optInsAdded: Array<'event_updates' | 'marketing'> = [];
+  if (
+    !(target.sms_opt_in_event_updates as boolean) &&
+    (source.sms_opt_in_event_updates as boolean)
+  ) {
+    optInsAdded.push('event_updates');
+  }
+  if (
+    !(target.sms_opt_in_marketing as boolean) &&
+    (source.sms_opt_in_marketing as boolean)
+  ) {
+    optInsAdded.push('marketing');
+  }
+
+  return {
+    success: true,
+    data: {
+      target: target as MergePreview['target'],
+      source: source as MergePreview['source'],
+      eventsTotal,
+      eventsOverlap: overlapFromJoinIds.length,
+      ticketsTransferred,
+      invitationsTransferred,
+      optInsAdded,
+    },
+  };
+}
+
+/**
+ * Atomically fold `fromId` into `toId`. Wraps the merge_master_contacts
+ * Postgres function so the join-row rewrites, ticket/log repointing,
+ * opt-in union, null backfill, and source delete all succeed-or-fail
+ * together. Use the service client because the RPC is granted to
+ * service_role only.
+ */
+export async function mergeMasterContacts(
+  fromId: string,
+  toId: string
+): Promise<ActionResponse<{ id: string }>> {
+  if (fromId === toId) {
+    return { success: false, error: 'Cannot merge a contact into itself.' };
+  }
+  const { createServiceClient } = await import('@/lib/supabase/service');
+  const supabase = await createClient();
+
+  // Auth gate: any signed-in team member can merge (mirrors the rest of
+  // the contacts actions).
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'You must be logged in.' };
+
+  const service = createServiceClient();
+  const { error } = await service.rpc('merge_master_contacts', {
+    from_id: fromId,
+    to_id: toId,
+  });
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath('/admin/contacts');
+  revalidatePath(`/admin/contacts/${toId}`);
+  return { success: true, data: { id: toId } };
+}
+
 export async function deleteMasterContact(id: string): Promise<ActionResponse<{ id: string }>> {
   const supabase = await createClient();
   const { error } = await supabase.from('master_contacts').delete().eq('id', id);
