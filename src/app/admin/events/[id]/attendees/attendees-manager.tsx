@@ -2,13 +2,20 @@
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, CheckCircle2, Undo2, Download, Check, Minus } from 'lucide-react';
+import { Plus, Search, CheckCircle2, Undo2, Download, Check, Minus, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatPrice } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { deliveryErrorLabel } from '@/lib/delivery-errors';
 import {
   Dialog,
   DialogContent,
@@ -80,6 +87,7 @@ interface AttendeesManagerProps {
   tiers: TierOption[];
   eventId: string;
   smsConsents: SmsConsent[];
+  bounceByEmail: Record<string, { status: string; error_code: string | null }>;
 }
 
 const emptyAddTicketForm = {
@@ -112,6 +120,7 @@ export function AttendeesManager({
   tiers,
   eventId,
   smsConsents,
+  bounceByEmail,
 }: AttendeesManagerProps) {
   const router = useRouter();
 
@@ -315,6 +324,7 @@ export function AttendeesManager({
   }
 
   return (
+    <TooltipProvider>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -426,7 +436,31 @@ export function AttendeesManager({
                         <TableCell className="font-medium">
                           {ticket.attendee_name}
                         </TableCell>
-                        <TableCell>{ticket.attendee_email ?? '—'}</TableCell>
+                        <TableCell>
+                          {ticket.attendee_email ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span>{ticket.attendee_email}</span>
+                              {(() => {
+                                const bounce = bounceByEmail[ticket.attendee_email.toLowerCase()];
+                                if (!bounce) return null;
+                                const reason = deliveryErrorLabel('email', bounce.error_code);
+                                return (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-900 dark:text-amber-200">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        Email {bounce.status}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{reason}</TooltipContent>
+                                  </Tooltip>
+                                );
+                              })()}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </TableCell>
                         <TableCell>{ticket.attendee_phone ?? '—'}</TableCell>
                         <TableCell>
                           {ticket.ticket_tiers?.name ?? '—'}
@@ -736,5 +770,6 @@ export function AttendeesManager({
         </DialogContent>
       </Dialog>
     </div>
+    </TooltipProvider>
   );
 }

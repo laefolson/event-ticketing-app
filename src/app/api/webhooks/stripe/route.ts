@@ -182,6 +182,37 @@ export async function POST(request: NextRequest) {
           if (!emailResult.success) {
             console.error('Failed to send ticket confirmation email:', emailResult.error);
           }
+
+          // Log the confirmation send to invitation_logs so the Resend
+          // webhook can update status/error_code on bounce/complaint and
+          // the attendees view can surface a bounce warning. Look up the
+          // join row the master sync just created for this event+email.
+          const buyerEmail = (firstTicket.attendee_email ?? '').toLowerCase();
+          let contactIdForLog: string | null = null;
+          if (buyerEmail) {
+            const { data: masterRow } = await supabase
+              .from('master_contacts')
+              .select('id')
+              .eq('email', buyerEmail)
+              .maybeSingle();
+            if (masterRow?.id) {
+              const { data: joinRow } = await supabase
+                .from('contacts')
+                .select('id')
+                .eq('event_id', firstTicket.event_id)
+                .eq('master_contact_id', masterRow.id)
+                .maybeSingle();
+              contactIdForLog = (joinRow?.id as string) ?? null;
+            }
+          }
+          await supabase.from('invitation_logs').insert({
+            event_id: firstTicket.event_id,
+            contact_id: contactIdForLog,
+            message_type: 'ticket_confirmation',
+            channel: 'email',
+            status: emailResult.success ? 'sent' : 'failed',
+            provider_message_id: emailResult.messageId ?? null,
+          });
         }
       }
 
