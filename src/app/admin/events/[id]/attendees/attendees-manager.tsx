@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, CheckCircle2, Undo2, Download, Check, Minus, AlertTriangle } from 'lucide-react';
+import { Plus, Search, CheckCircle2, Undo2, Download, Check, Minus, AlertTriangle, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatPrice } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
@@ -42,7 +42,8 @@ import {
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { ScanDialog } from './scan-dialog';
-import { createManualTicket, toggleCheckIn } from './actions';
+import { createManualTicket, toggleCheckIn, resendTickets } from './actions';
+import { Checkbox } from '@/components/ui/checkbox';
 import type { PaymentMethod, Ticket, TicketTier } from '@/types/database';
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
@@ -129,6 +130,19 @@ export function AttendeesManager({
   const [addTicketForm, setAddTicketForm] = useState(emptyAddTicketForm);
   const [addTicketPending, setAddTicketPending] = useState(false);
   const [addTicketError, setAddTicketError] = useState<string | null>(null);
+
+  // Resend Tickets dialog state — opened from a row, prefills email/phone
+  // from the clicked ticket. Bundle size is computed from current
+  // tickets[] when the dialog opens so the admin sees how many tickets
+  // they're about to resend.
+  const [resendTicket, setResendTicket] = useState<TicketWithTier | null>(null);
+  const [resendForm, setResendForm] = useState({
+    email: '',
+    phone: '',
+    sendEmail: false,
+    sendSms: false,
+  });
+  const [resendPending, startResend] = useTransition();
 
   // Search
   const [search, setSearch] = useState('');
@@ -299,6 +313,68 @@ export function AttendeesManager({
     setAddTicketOpen(false);
     router.refresh();
   }
+
+  // Resend Tickets handlers — opens the dialog prefilled with whatever
+  // the ticket currently has, defaulting to whichever channels are
+  // available so a single click can re-send.
+  function openResend(ticket: TicketWithTier) {
+    const email = ticket.attendee_email ?? '';
+    const phone = ticket.attendee_phone ?? '';
+    setResendTicket(ticket);
+    setResendForm({
+      email,
+      phone,
+      sendEmail: !!email,
+      sendSms: !!phone,
+    });
+  }
+
+  function closeResend() {
+    if (resendPending) return;
+    setResendTicket(null);
+  }
+
+  function handleResendSubmit() {
+    if (!resendTicket) return;
+    startResend(async () => {
+      const res = await resendTickets({
+        ticketId: resendTicket.id,
+        email: resendForm.email ? resendForm.email.trim() : null,
+        phone: resendForm.phone ? resendForm.phone.trim() : null,
+        sendEmail: resendForm.sendEmail,
+        sendSms: resendForm.sendSms,
+      });
+      if (!res.success) {
+        toast.error(res.error ?? 'Failed to resend');
+        return;
+      }
+      const { emailSent, smsSent, ticketsUpdated, bundleSize, deliveryError } = res.data!;
+      const parts: string[] = [];
+      if (emailSent) parts.push(`Email sent (${bundleSize} ticket${bundleSize === 1 ? '' : 's'})`);
+      if (smsSent) parts.push(`SMS sent`);
+      if (ticketsUpdated > 0) parts.push(`updated contact info on ${ticketsUpdated} ticket${ticketsUpdated === 1 ? '' : 's'}`);
+      if (deliveryError) {
+        toast.warning(`${parts.join(' · ')} — ${deliveryError}`);
+      } else {
+        toast.success(parts.join(' · ') || 'Done');
+      }
+      setResendTicket(null);
+      router.refresh();
+    });
+  }
+
+  // Bundle size = every confirmed/checked-in ticket in this event with
+  // the same current attendee_email. The dialog shows this so the admin
+  // knows a multi-ticket purchase will get one resend with all codes.
+  const resendBundleSize = useMemo(() => {
+    if (!resendTicket || !resendTicket.attendee_email) return 1;
+    const email = resendTicket.attendee_email.toLowerCase();
+    return tickets.filter(
+      (t) =>
+        (t.status === 'confirmed' || t.status === 'checked_in') &&
+        (t.attendee_email ?? '').toLowerCase() === email
+    ).length || 1;
+  }, [resendTicket, tickets]);
 
   // Check-in toggle handler
   async function handleToggle(ticketId: string, currentStatus: string) {
@@ -521,28 +597,46 @@ export function AttendeesManager({
                           {isRefunded ? (
                             <span className="text-xs text-muted-foreground">—</span>
                           ) : (
-                            <Button
-                              variant={isCheckedIn ? 'ghost' : 'default'}
-                              size="sm"
-                              disabled={isRowPending}
-                              onClick={() =>
-                                handleToggle(ticket.id, ticket.status)
-                              }
-                            >
-                              {isRowPending ? (
-                                '…'
-                              ) : isCheckedIn ? (
-                                <>
-                                  <Undo2 className="mr-1 h-3.5 w-3.5" />
-                                  Undo
-                                </>
-                              ) : (
-                                <>
-                                  <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                                  Check In
-                                </>
-                              )}
-                            </Button>
+                            <div className="flex items-center justify-end gap-1">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => openResend(ticket)}
+                                    disabled={
+                                      !ticket.attendee_email && !ticket.attendee_phone
+                                    }
+                                    aria-label="Resend tickets"
+                                  >
+                                    <Send className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Resend tickets</TooltipContent>
+                              </Tooltip>
+                              <Button
+                                variant={isCheckedIn ? 'ghost' : 'default'}
+                                size="sm"
+                                disabled={isRowPending}
+                                onClick={() =>
+                                  handleToggle(ticket.id, ticket.status)
+                                }
+                              >
+                                {isRowPending ? (
+                                  '…'
+                                ) : isCheckedIn ? (
+                                  <>
+                                    <Undo2 className="mr-1 h-3.5 w-3.5" />
+                                    Undo
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                                    Check In
+                                  </>
+                                )}
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
@@ -765,6 +859,99 @@ export function AttendeesManager({
               }
             >
               {addTicketPending ? 'Creating…' : 'Create Ticket'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Resend Tickets Dialog */}
+      <Dialog open={resendTicket !== null} onOpenChange={(o) => !o && closeResend()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Resend tickets</DialogTitle>
+            <DialogDescription>
+              {resendTicket && (
+                <>
+                  Resending {resendBundleSize} ticket
+                  {resendBundleSize === 1 ? '' : 's'} for{' '}
+                  <strong>{resendTicket.attendee_name}</strong>. Edit the email
+                  or phone to update the ticket record before sending.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="resend-email">Email</Label>
+              <Input
+                id="resend-email"
+                type="email"
+                value={resendForm.email}
+                onChange={(e) =>
+                  setResendForm((f) => ({ ...f, email: e.target.value }))
+                }
+                placeholder="recipient@example.com"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="resend-phone">Phone</Label>
+              <Input
+                id="resend-phone"
+                type="tel"
+                value={resendForm.phone}
+                onChange={(e) =>
+                  setResendForm((f) => ({ ...f, phone: e.target.value }))
+                }
+                placeholder="(555) 123-4567"
+              />
+            </div>
+
+            <div className="rounded-md border p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="resend-channel-email"
+                  checked={resendForm.sendEmail}
+                  onCheckedChange={(v) =>
+                    setResendForm((f) => ({ ...f, sendEmail: v === true }))
+                  }
+                  disabled={!resendForm.email.trim()}
+                />
+                <Label htmlFor="resend-channel-email" className="cursor-pointer text-sm">
+                  Send by email
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="resend-channel-sms"
+                  checked={resendForm.sendSms}
+                  onCheckedChange={(v) =>
+                    setResendForm((f) => ({ ...f, sendSms: v === true }))
+                  }
+                  disabled={!resendForm.phone.trim()}
+                />
+                <Label htmlFor="resend-channel-sms" className="cursor-pointer text-sm">
+                  Send by SMS
+                </Label>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={closeResend} disabled={resendPending}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleResendSubmit}
+              disabled={
+                resendPending ||
+                (!resendForm.sendEmail && !resendForm.sendSms) ||
+                (resendForm.sendEmail && !resendForm.email.trim()) ||
+                (resendForm.sendSms && !resendForm.phone.trim())
+              }
+            >
+              {resendPending ? 'Sending…' : 'Send'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -476,3 +476,252 @@ export async function checkInByCode(
     },
   };
 }
+
+// ── Resend tickets ──────────────────────────────────────────────────────
+
+const resendSchema = z
+  .object({
+    ticketId: z.string().uuid('Invalid ticket'),
+    email: z.string().email().nullable().optional(),
+    phone: z
+      .string()
+      .max(30)
+      .nullable()
+      .optional()
+      .refine((v) => v == null || v === '' || isValidPhone(v), PHONE_VALIDATION_MESSAGE),
+    sendEmail: z.boolean(),
+    sendSms: z.boolean(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.sendEmail && !data.sendSms) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Pick at least one channel.',
+        path: ['sendEmail'],
+      });
+    }
+  });
+
+export type ResendTicketsInput = z.infer<typeof resendSchema>;
+
+export interface ResendTicketsResult {
+  emailSent: boolean;
+  smsSent: boolean;
+  ticketsUpdated: number;
+  bundleSize: number;
+  deliveryError?: string;
+}
+
+/**
+ * Resend the ticket-confirmation bundle for one attendee. "Bundle" =
+ * every confirmed/checked-in ticket in this event whose attendee_email
+ * matches the clicked ticket's email (this mirrors how the original
+ * Stripe-webhook confirmation send groups multi-ticket purchases into
+ * one email).
+ *
+ * If `email` or `phone` are supplied and differ from the stored value,
+ * every ticket in the bundle is rewritten to the new contact info
+ * before sending — useful for recovering from a typo'd address that's
+ * been merged at the master level but is still stuck on the ticket row.
+ */
+export async function resendTickets(
+  input: ResendTicketsInput
+): Promise<ActionResponse<ResendTicketsResult>> {
+  const parsed = resendSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
+  }
+  const v = parsed.data;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'You must be logged in.' };
+  }
+
+  const service = createServiceClient();
+
+  // Fetch the clicked ticket so we know which bundle (event + email) to
+  // resend, and we have the current attendee_email/phone to detect overrides.
+  const { data: anchorTicket, error: anchorErr } = await service
+    .from('tickets')
+    .select('id, event_id, attendee_email, attendee_phone')
+    .eq('id', v.ticketId)
+    .single();
+  if (anchorErr || !anchorTicket) {
+    return { success: false, error: 'Ticket not found.' };
+  }
+
+  const currentEmail = (anchorTicket.attendee_email as string | null) ?? null;
+  const newEmail = v.email !== undefined ? (v.email || null) : currentEmail;
+  const newPhone =
+    v.phone !== undefined && v.phone !== null
+      ? (normalizePhone(v.phone) || null)
+      : (anchorTicket.attendee_phone as string | null) ?? null;
+
+  if (v.sendEmail && !newEmail) {
+    return { success: false, error: 'Email channel requires an email address.' };
+  }
+  if (v.sendSms && !newPhone) {
+    return { success: false, error: 'SMS channel requires a phone number.' };
+  }
+
+  // Build the bundle: every confirmed/checked-in ticket in this event
+  // with the same current attendee_email as the anchor.
+  let bundleQuery = service
+    .from('tickets')
+    .select('id, attendee_name, ticket_code, quantity, amount_paid_cents, tier_id, attendee_email, attendee_phone, contact_id')
+    .eq('event_id', anchorTicket.event_id)
+    .in('status', ['confirmed', 'checked_in']);
+  if (currentEmail) {
+    bundleQuery = bundleQuery.ilike('attendee_email', currentEmail);
+  } else {
+    bundleQuery = bundleQuery.eq('id', v.ticketId);
+  }
+  const { data: bundle, error: bundleErr } = await bundleQuery;
+  if (bundleErr || !bundle || bundle.length === 0) {
+    return { success: false, error: 'No matching tickets to resend.' };
+  }
+
+  // Apply email/phone override across the whole bundle if changed.
+  let ticketsUpdated = 0;
+  const patch: { attendee_email?: string | null; attendee_phone?: string | null } = {};
+  if ((newEmail ?? null) !== (currentEmail ?? null)) {
+    patch.attendee_email = newEmail;
+  }
+  if ((newPhone ?? null) !== ((anchorTicket.attendee_phone as string | null) ?? null)) {
+    patch.attendee_phone = newPhone;
+  }
+  if (Object.keys(patch).length > 0) {
+    const ids = bundle.map((t) => t.id as string);
+    const { error: patchErr, data: patchData } = await service
+      .from('tickets')
+      .update(patch)
+      .in('id', ids)
+      .select('id');
+    if (patchErr) {
+      return { success: false, error: patchErr.message };
+    }
+    ticketsUpdated = patchData?.length ?? 0;
+    for (const t of bundle) {
+      if (patch.attendee_email !== undefined) t.attendee_email = patch.attendee_email;
+      if (patch.attendee_phone !== undefined) t.attendee_phone = patch.attendee_phone;
+    }
+  }
+
+  // Pull event details + tier names for the email/SMS templates.
+  const { data: event, error: eventErr } = await service
+    .from('events')
+    .select('id, title, slug, date_start, location_name, ticket_qr_enabled, cover_image_url')
+    .eq('id', anchorTicket.event_id)
+    .single();
+  if (eventErr || !event) {
+    return { success: false, error: 'Event not found.' };
+  }
+
+  const tierIds = Array.from(new Set(bundle.map((t) => t.tier_id as string)));
+  const { data: tierRows } = await service
+    .from('ticket_tiers')
+    .select('id, name')
+    .in('id', tierIds);
+  const tierNameById = new Map((tierRows ?? []).map((t) => [t.id as string, t.name as string]));
+
+  const venueName = await getVenueName();
+  const dateFormatted = formatDate(event.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
+  const ticketQrEnabled = !!event.ticket_qr_enabled;
+  const baseUrl = getBaseUrl();
+  const attendeeName = (bundle[0].attendee_name as string) ?? 'Guest';
+  const amountTotal = bundle.reduce(
+    (sum, t) => sum + ((t.amount_paid_cents as number | null) ?? 0),
+    0
+  );
+
+  const result: ResendTicketsResult = {
+    emailSent: false,
+    smsSent: false,
+    ticketsUpdated,
+    bundleSize: bundle.length,
+  };
+  const errors: string[] = [];
+
+  if (v.sendEmail && newEmail) {
+    const ticketLines = await Promise.all(
+      bundle.map(async (t) => {
+        const line: { tierName: string; quantity: number; ticketCode: string; qrDataUrl?: string } = {
+          tierName: tierNameById.get(t.tier_id as string) ?? 'Ticket',
+          quantity: (t.quantity as number) ?? 1,
+          ticketCode: t.ticket_code as string,
+        };
+        if (ticketQrEnabled) {
+          line.qrDataUrl = await generateQrDataUrl(
+            `${baseUrl}/e/${event.slug}/verify/${t.ticket_code}`
+          );
+        }
+        return line;
+      })
+    );
+
+    const emailResult = await sendEmail({
+      to: newEmail,
+      subject: `Your Tickets: ${event.title}`,
+      react: TicketConfirmationEmail({
+        attendeeName,
+        eventTitle: event.title,
+        dateFormatted,
+        locationName: event.location_name,
+        tickets: ticketLines,
+        amountPaidFormatted: formatCents(amountTotal),
+        venueName,
+        bannerText: event.location_name ?? venueName,
+        ticketQrEnabled,
+        coverImageUrl: event.cover_image_url,
+      }),
+    });
+    result.emailSent = emailResult.success;
+    if (!emailResult.success) errors.push(`Email: ${emailResult.error}`);
+
+    // One log row attributed to the anchor ticket's join row so the
+    // attendees view's bounceByEmail lookup picks this resend up too.
+    await service.from('invitation_logs').insert({
+      event_id: anchorTicket.event_id,
+      contact_id: (anchorTicket as { contact_id?: string | null }).contact_id ?? null,
+      message_type: 'ticket_resend',
+      channel: 'email',
+      status: emailResult.success ? 'sent' : 'failed',
+      provider_message_id: emailResult.messageId ?? null,
+    });
+  }
+
+  if (v.sendSms && newPhone) {
+    const shortDate = formatDate(event.date_start, 'MMM d');
+    const codes = bundle.map((t) => t.ticket_code as string);
+    const firstCode = codes[0];
+    const verifyUrl = `${baseUrl}/e/${event.slug}/verify/${firstCode}`;
+    const body =
+      bundle.length === 1
+        ? `Your ticket for ${event.title} on ${shortDate}: ${firstCode}. View: ${verifyUrl}`
+        : `Your ${bundle.length} tickets for ${event.title} on ${shortDate}. Codes: ${codes.join(', ')}. View: ${verifyUrl}`;
+
+    const smsResult = await sendSms({ to: newPhone, body });
+    result.smsSent = smsResult.success;
+    if (!smsResult.success) errors.push(`SMS: ${smsResult.error}`);
+
+    await service.from('invitation_logs').insert({
+      event_id: anchorTicket.event_id,
+      contact_id: (anchorTicket as { contact_id?: string | null }).contact_id ?? null,
+      message_type: 'ticket_resend',
+      channel: 'sms',
+      status: smsResult.success ? 'sent' : 'failed',
+      provider_message_id: smsResult.messageId ?? null,
+    });
+  }
+
+  if (errors.length > 0) {
+    result.deliveryError = errors.join(' · ');
+  }
+
+  return { success: true, data: result };
+}
