@@ -175,6 +175,33 @@ export function AddFromMasterSheet({ eventId, priorEvents, pastContributors }: A
   function unstage(id: string) {
     setStaged((prev) => prev.filter((s) => s.id !== id));
   }
+  // Stage/unstage every selectable (non-already-in-event) row in the
+  // currently visible list. Each tab passes its own addedBy so prior-event
+  // bulk adds get attributed correctly.
+  function toggleAllVisible(
+    rows: PickableMasterContact[],
+    addedBy: AddedBy,
+    shouldSelect: boolean,
+  ) {
+    const selectable = rows.filter((r) => !r.isAlreadyInEvent);
+    setStaged((prev) => {
+      if (shouldSelect) {
+        const existing = new Set(prev.map((s) => s.id));
+        const additions = selectable
+          .filter((r) => !existing.has(r.id))
+          .map((r) => ({
+            id: r.id,
+            first_name: r.first_name,
+            last_name: r.last_name,
+            email: r.email,
+            addedBy,
+          }));
+        return [...prev, ...additions];
+      }
+      const visibleIds = new Set(selectable.map((r) => r.id));
+      return prev.filter((s) => !visibleIds.has(s.id));
+    });
+  }
 
   function handleSubmit() {
     if (staged.length === 0) return;
@@ -243,6 +270,7 @@ export function AddFromMasterSheet({ eventId, priorEvents, pastContributors }: A
               rows={searchResults}
               isStaged={isStaged}
               toggle={(c) => toggleStaged(c, 'manual')}
+              toggleAll={(shouldSelect) => toggleAllVisible(searchResults, 'manual', shouldSelect)}
               emptyMessage={searchQuery ? 'No master contacts match this search.' : 'Type to search the master list.'}
             />
           </TabsContent>
@@ -282,6 +310,7 @@ export function AddFromMasterSheet({ eventId, priorEvents, pastContributors }: A
               rows={priorResults}
               isStaged={isStaged}
               toggle={(c) => toggleStaged(c, 'event_copy')}
+              toggleAll={(shouldSelect) => toggleAllVisible(priorResults, 'event_copy', shouldSelect)}
               emptyMessage={priorEventId ? 'No contacts found for the selected event.' : 'Choose a prior event to see its contacts.'}
             />
           </TabsContent>
@@ -317,6 +346,7 @@ export function AddFromMasterSheet({ eventId, priorEvents, pastContributors }: A
               rows={optResults}
               isStaged={isStaged}
               toggle={(c) => toggleStaged(c, 'manual')}
+              toggleAll={(shouldSelect) => toggleAllVisible(optResults, 'manual', shouldSelect)}
               emptyMessage={(!optEvent && !optMarketing) ? 'Pick at least one opt-in.' : 'No matching contacts.'}
             />
           </TabsContent>
@@ -347,6 +377,7 @@ export function AddFromMasterSheet({ eventId, priorEvents, pastContributors }: A
               rows={contributorResults}
               isStaged={isStaged}
               toggle={(c) => toggleStaged(c, 'manual')}
+              toggleAll={(shouldSelect) => toggleAllVisible(contributorResults, 'manual', shouldSelect)}
               emptyMessage={contributor ? 'No master contacts from this contributor (or all are already in the event).' : 'Pick a contributor to see their contacts.'}
             />
           </TabsContent>
@@ -425,14 +456,21 @@ function ResultsList({
   rows,
   isStaged,
   toggle,
+  toggleAll,
   emptyMessage,
 }: {
   loading: boolean;
   rows: PickableMasterContact[];
   isStaged: (id: string) => boolean;
   toggle: (c: PickableMasterContact) => void;
+  toggleAll: (shouldSelect: boolean) => void;
   emptyMessage: string;
 }) {
+  const selectable = rows.filter((r) => !r.isAlreadyInEvent);
+  const selectedCount = selectable.filter((r) => isStaged(r.id)).length;
+  const allSelected = selectable.length > 0 && selectedCount === selectable.length;
+  const someSelected = selectedCount > 0 && !allSelected;
+
   return (
     <div className="mt-3 flex-1 overflow-y-auto rounded-md border">
       {loading ? (
@@ -440,7 +478,24 @@ function ResultsList({
       ) : rows.length === 0 ? (
         <div className="p-6 text-center text-sm text-muted-foreground">{emptyMessage}</div>
       ) : (
-        <ul className="divide-y">
+        <>
+          {selectable.length > 0 && (
+            <div className="sticky top-0 z-10 flex items-center gap-3 border-b bg-background px-3 py-2">
+              <Checkbox
+                checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                onCheckedChange={(v) => toggleAll(v === true)}
+                aria-label="Select all visible"
+              />
+              <span className="text-xs text-muted-foreground">
+                {allSelected
+                  ? `All ${selectable.length} selected`
+                  : someSelected
+                    ? `${selectedCount} of ${selectable.length} selected`
+                    : `Select all ${selectable.length}`}
+              </span>
+            </div>
+          )}
+          <ul className="divide-y">
           {rows.map((c) => {
             const staged = isStaged(c.id);
             const disabled = c.isAlreadyInEvent;
@@ -480,6 +535,7 @@ function ResultsList({
             );
           })}
         </ul>
+        </>
       )}
     </div>
   );

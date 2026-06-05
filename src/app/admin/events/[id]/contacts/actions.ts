@@ -823,7 +823,7 @@ export async function sendSaveTheDates(
 // Phase 4: Add from Master List
 // ============================================================
 
-const MASTER_PICK_LIMIT = 100;
+const MASTER_PICK_LIMIT = 1000;
 
 export interface PickableMasterContact {
   id: string;
