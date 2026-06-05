@@ -122,11 +122,11 @@ export default function SmsOptInPage() {
                   <h3 className="font-semibold">Future Event Announcements</h3>
                 </div>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  Messages about upcoming events, new event announcements, and
-                  seasonal programming from Over Yonder Farm.
+                  A heads-up text when we have an upcoming event coming up at
+                  Over Yonder Farm. We&apos;ll never share or sell your number.
                 </p>
                 <p className="mt-3 text-xs text-muted-foreground">
-                  Typical frequency: no more than 1 message per month
+                  Typical frequency: 2–4 messages per year
                 </p>
               </CardContent>
             </Card>
@@ -226,11 +226,10 @@ export default function SmsOptInPage() {
                     Over Yonder Farm
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                    By checking this box, you consent to receive text messages
-                    from Over Yonder Farm about upcoming events, new event
-                    announcements, and seasonal programming. Message frequency
-                    varies, typically no more than 1 message per month. Message
-                    and data rates may apply. Reply STOP to opt out at any time.
+                    Get a text when we have an upcoming event — typically 2–4
+                    times a year, that&apos;s it. We&apos;ll never share or
+                    sell your number. Message and data rates may apply. Reply
+                    STOP anytime.
                   </p>
                 </div>
               </div>

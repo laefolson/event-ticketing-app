@@ -223,10 +223,9 @@ export function RsvpForm({ eventId, slug, tiers, venueName }: RsvpFormProps) {
             </label>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed pl-6">
-            By checking this box, you consent to receive text messages from {venueName} about upcoming events, new event announcements, and
-            seasonal programming. Message frequency varies, typically no more
-            than 1 message per month. Message and data rates may apply. Reply
-            STOP to opt out at any time. View our{' '}
+            Get a text when we have an upcoming event — typically 2–4 times a
+            year, that&apos;s it. We&apos;ll never share or sell your number.
+            Message and data rates may apply. Reply STOP anytime.{' '}
             <a
               href="/privacy-policy"
               className="underline hover:text-foreground"
@@ -235,7 +234,6 @@ export function RsvpForm({ eventId, slug, tiers, venueName }: RsvpFormProps) {
             >
               Privacy Policy
             </a>
-            .
           </p>
         </div>
       )}
