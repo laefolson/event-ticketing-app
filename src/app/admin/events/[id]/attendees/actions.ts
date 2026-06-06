@@ -612,6 +612,31 @@ export async function resendTickets(
     }
   }
 
+  // If the admin just added an email to a ticket that didn't have one
+  // (or changed it), upsert into master_contacts + create/refresh the
+  // contacts join row for this event. Without this, phone-only tickets
+  // stay invisible in /admin/contacts after the email is set. Same
+  // helper that runs from checkout and free RSVP.
+  if (newEmail && newEmail !== currentEmail) {
+    try {
+      await syncMasterContactFromCheckout(service, {
+        eventId: anchorTicket.event_id,
+        email: newEmail,
+        name: bundle[0].attendee_name as string,
+        phone: newPhone,
+        smsOptInEvent: false,
+        smsOptInMarketing: false,
+        source: 'manual',
+        addedBy: 'manual',
+      });
+    } catch (err) {
+      console.error(
+        `resendTickets master sync failed for ${newEmail}:`,
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
   // Pull event details + tier names for the email/SMS templates.
   const { data: event, error: eventErr } = await service
     .from('events')
