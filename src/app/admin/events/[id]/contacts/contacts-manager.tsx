@@ -15,6 +15,7 @@ import {
   Repeat2,
   CalendarHeart,
   Ticket,
+  Bell,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -26,6 +27,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
@@ -57,8 +61,17 @@ import {
   sendInvitations,
   sendSaveTheDates,
   bulkUpdateContactChannel,
+  sendTicketReminders,
 } from './actions';
-import type { ContactInput, InvitationScope, InvitationResult, SaveTheDateScope, SaveTheDateResult } from './actions';
+import type {
+  ContactInput,
+  InvitationScope,
+  InvitationResult,
+  SaveTheDateScope,
+  SaveTheDateResult,
+  TicketReminderScope,
+  TicketReminderResult,
+} from './actions';
 import type { ContactWithMaster, CsvImport, InvitationChannel } from '@/types/database';
 import { formatDate } from '@/lib/utils';
 import { AddFromMasterSheet } from './add-from-master-sheet';
@@ -136,6 +149,18 @@ export function ContactsManager({
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteResult, setInviteResult] = useState<InvitationResult | null>(null);
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
+
+  // Ticket Reminder dialog state — custom subject + body, optional
+  // per-send channel selection, and a scope filter (default
+  // "Invited, no ticket yet" per the design call).
+  const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
+  const [reminderScope, setReminderScope] = useState<TicketReminderScope>('no_ticket');
+  const [reminderSubject, setReminderSubject] = useState('');
+  const [reminderBody, setReminderBody] = useState('');
+  const [reminderChannelEmail, setReminderChannelEmail] = useState(true);
+  const [reminderChannelSms, setReminderChannelSms] = useState(true);
+  const [reminderSending, setReminderSending] = useState(false);
+  const [reminderResult, setReminderResult] = useState<TicketReminderResult | null>(null);
 
   // Save the Date dialog state
   const [stdDialogOpen, setStdDialogOpen] = useState(false);
@@ -298,6 +323,85 @@ export function ContactsManager({
     }
   }
 
+  // Ticket Reminder handlers — count preview mirrors the invite dialog
+  // but adds a no_ticket filter that walks confirmed/checked-in tickets
+  // in this event to subtract anyone who already bought.
+  const reminderCounts = useMemo(() => {
+    const eligible = contacts.filter((c) => c.invitation_channel !== 'none');
+    let target: ContactWithMaster[];
+    if (reminderScope === 'selected') {
+      target = eligible.filter((c) => selectedContactIds.has(c.id));
+    } else {
+      target = eligible;
+    }
+    const emailCount = target.filter(
+      (c) =>
+        reminderChannelEmail &&
+        (c.invitation_channel === 'email' || c.invitation_channel === 'both') &&
+        c.master_contacts.email
+    ).length;
+    const smsCount = target.filter(
+      (c) =>
+        reminderChannelSms &&
+        (c.invitation_channel === 'sms' || c.invitation_channel === 'both') &&
+        c.master_contacts.phone
+    ).length;
+    return { total: target.length, emailCount, smsCount };
+  }, [
+    contacts,
+    reminderScope,
+    selectedContactIds,
+    reminderChannelEmail,
+    reminderChannelSms,
+  ]);
+
+  function openReminderDialog() {
+    setReminderScope('no_ticket');
+    setReminderSubject('');
+    setReminderBody('');
+    setReminderChannelEmail(true);
+    setReminderChannelSms(true);
+    setReminderResult(null);
+    setReminderDialogOpen(true);
+  }
+
+  function closeReminderDialog() {
+    setReminderDialogOpen(false);
+    if (reminderResult) router.refresh();
+  }
+
+  async function handleSendReminders() {
+    if (!reminderSubject.trim() || !reminderBody.trim()) {
+      toast.error('Subject and message body are required.');
+      return;
+    }
+    if (!reminderChannelEmail && !reminderChannelSms) {
+      toast.error('Pick at least one channel.');
+      return;
+    }
+    setReminderSending(true);
+    const result = await sendTicketReminders({
+      eventId,
+      scope: reminderScope,
+      contactIds:
+        reminderScope === 'selected' ? Array.from(selectedContactIds) : undefined,
+      subject: reminderSubject.trim(),
+      body: reminderBody.trim(),
+      channels: { email: reminderChannelEmail, sms: reminderChannelSms },
+    });
+    setReminderSending(false);
+    if (result.success && result.data) {
+      setReminderResult(result.data);
+    } else {
+      setReminderResult({
+        sent: 0,
+        failed: 0,
+        skipped: 0,
+        failedDetails: [result.error ?? 'Failed to send reminders'],
+      });
+    }
+  }
+
   // Save the Date handlers
   const stdCounts = useMemo(() => {
     let targetContacts: ContactWithMaster[];
@@ -413,6 +517,10 @@ export function ContactsManager({
               <Button variant="outline" onClick={openInviteDialog}>
                 <Send className="mr-2 h-4 w-4" />
                 Send Invitations
+              </Button>
+              <Button variant="outline" onClick={openReminderDialog}>
+                <Bell className="mr-2 h-4 w-4" />
+                Send Reminder
               </Button>
             </>
           )}
@@ -1008,6 +1116,165 @@ export function ContactsManager({
                   disabled={channelUpdating || channelPreviewCount === 0}
                 >
                   {channelUpdating ? 'Updating...' : 'Update Channel'}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Reminder Dialog */}
+      <Dialog
+        open={reminderDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) closeReminderDialog();
+          else setReminderDialogOpen(true);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {reminderResult ? 'Reminders Sent' : 'Send Reminder'}
+            </DialogTitle>
+            <DialogDescription>
+              {reminderResult
+                ? 'Here are the results of your reminder send.'
+                : 'Write a custom subject and message. The invitation image is attached automatically.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {reminderResult ? (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 rounded-lg border border-green-300 bg-green-50 p-4 dark:border-green-700 dark:bg-green-950">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium text-green-800 dark:text-green-200">
+                    {reminderResult.sent} message{reminderResult.sent !== 1 ? 's' : ''} sent
+                  </p>
+                  {reminderResult.skipped > 0 && (
+                    <p className="text-muted-foreground">
+                      {reminderResult.skipped} skipped (already has a ticket, or channel mismatch)
+                    </p>
+                  )}
+                  {reminderResult.failed > 0 && (
+                    <p className="text-red-700 dark:text-red-300">
+                      {reminderResult.failed} failed
+                    </p>
+                  )}
+                </div>
+              </div>
+              {reminderResult.failedDetails.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Failures:</p>
+                  <div className="max-h-40 overflow-y-auto rounded-md border p-3 text-xs">
+                    {reminderResult.failedDetails.map((d, i) => (
+                      <div key={i} className="text-muted-foreground py-0.5">
+                        {d}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <DialogFooter>
+                <Button onClick={closeReminderDialog}>Done</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reminder-subject">Subject *</Label>
+                <Input
+                  id="reminder-subject"
+                  value={reminderSubject}
+                  onChange={(e) => setReminderSubject(e.target.value)}
+                  placeholder="Don't forget to grab your tickets!"
+                  maxLength={200}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reminder-body">Message *</Label>
+                <Textarea
+                  id="reminder-body"
+                  rows={6}
+                  value={reminderBody}
+                  onChange={(e) => setReminderBody(e.target.value)}
+                  placeholder="Hi! Tickets for the dinner are going fast — grab yours before they're gone."
+                  maxLength={4000}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The message becomes the body of the email and the SMS. The
+                  invitation image is attached automatically.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Who to remind</Label>
+                <Select
+                  value={reminderScope}
+                  onValueChange={(val) => setReminderScope(val as TicketReminderScope)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="no_ticket">Invited, no ticket yet</SelectItem>
+                    <SelectItem value="all">All contacts</SelectItem>
+                    <SelectItem value="selected">
+                      Selected contacts ({selectedContactIds.size})
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="rounded-md border p-3 space-y-2">
+                <p className="text-sm font-medium">Channels</p>
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <Checkbox
+                      checked={reminderChannelEmail}
+                      onCheckedChange={(v) => setReminderChannelEmail(v === true)}
+                    />
+                    <Mail className="h-3.5 w-3.5" />
+                    Email
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <Checkbox
+                      checked={reminderChannelSms}
+                      onCheckedChange={(v) => setReminderChannelSms(v === true)}
+                    />
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    SMS
+                  </label>
+                </div>
+                <div className="flex items-center gap-4 text-sm text-muted-foreground pt-1">
+                  <span>
+                    Up to {reminderCounts.emailCount} email{reminderCounts.emailCount !== 1 ? 's' : ''}
+                  </span>
+                  <span>
+                    Up to {reminderCounts.smsCount} SMS
+                  </span>
+                </div>
+                {reminderScope === 'no_ticket' && (
+                  <p className="text-xs text-muted-foreground">
+                    Contacts who already have a confirmed ticket are excluded automatically.
+                  </p>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={closeReminderDialog} disabled={reminderSending}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSendReminders}
+                  disabled={
+                    reminderSending ||
+                    !reminderSubject.trim() ||
+                    !reminderBody.trim() ||
+                    (!reminderChannelEmail && !reminderChannelSms)
+                  }
+                >
+                  {reminderSending ? 'Sending…' : 'Send'}
                 </Button>
               </DialogFooter>
             </div>

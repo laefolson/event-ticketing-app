@@ -6,7 +6,14 @@ export type EventStatus = 'draft' | 'published' | 'archived';
 export type InvitationChannel = 'email' | 'sms' | 'both' | 'none';
 export type TicketStatus = 'pending' | 'confirmed' | 'checked_in' | 'cancelled' | 'refunded';
 export type TeamRole = 'admin' | 'helper';
-export type MessageType = 'invitation' | 'thank_you' | 'save_the_date' | 'ticket_resend' | 'ticket_confirmation';
+export type MessageType =
+  | 'invitation'
+  | 'thank_you'
+  | 'save_the_date'
+  | 'ticket_resend'
+  | 'ticket_confirmation'
+  | 'ticket_reminder'
+  | 'event_update';
 export type MessageChannel = 'email' | 'sms';
 export type MessageStatus = 'sent' | 'delivered' | 'failed' | 'bounced';
 export type ContactSource = 'manual' | 'csv_import' | 'google_sheets' | 'checkout' | 'rsvp';

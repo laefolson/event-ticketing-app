@@ -7,6 +7,7 @@ import { sendEmail } from '@/lib/resend';
 import { sendSms, toMmsImageUrl } from '@/lib/twilio';
 import { InvitationEmail } from '@/emails/invitation-email';
 import { SaveTheDateEmail } from '@/emails/save-the-date-email';
+import { TicketReminderEmail } from '@/emails/ticket-reminder-email';
 import type { ActionResponse } from '@/types/actions';
 import { getVenueName } from '@/lib/settings';
 import type { InvitationChannel } from '@/types/database';
@@ -1099,5 +1100,236 @@ export async function addMasterContactsToEvent(
   return {
     success: true,
     data: { added: joinRows.length, alreadyInEvent: linkedSet.size },
+  };
+}
+
+// ── Ticket Reminders ────────────────────────────────────────────────────
+
+export type TicketReminderScope = 'no_ticket' | 'all' | 'selected';
+
+const ticketReminderSchema = z.object({
+  eventId: z.string().uuid('Invalid event ID'),
+  scope: z.enum(['no_ticket', 'all', 'selected']),
+  contactIds: z.array(z.string().uuid()).optional(),
+  subject: z.string().trim().min(1, 'Subject is required').max(200),
+  body: z.string().trim().min(1, 'Message body is required').max(4000),
+  channels: z.object({
+    email: z.boolean(),
+    sms: z.boolean(),
+  }),
+});
+
+export type SendTicketRemindersInput = z.infer<typeof ticketReminderSchema>;
+
+export interface TicketReminderResult {
+  sent: number;
+  failed: number;
+  skipped: number;
+  failedDetails: string[];
+}
+
+export async function sendTicketReminders(
+  input: SendTicketRemindersInput
+): Promise<ActionResponse<TicketReminderResult>> {
+  const parsed = ticketReminderSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? 'Invalid input',
+    };
+  }
+  const { eventId, scope, contactIds, subject, body, channels } = parsed.data;
+
+  if (!channels.email && !channels.sms) {
+    return { success: false, error: 'Pick at least one channel.' };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'You must be logged in.' };
+  }
+
+  const { data: event, error: eventError } = await supabase
+    .from('events')
+    .select(
+      'id, title, slug, date_start, location_name, cover_image_url, invitation_image_url'
+    )
+    .eq('id', eventId)
+    .single();
+  if (eventError || !event) {
+    return { success: false, error: 'Event not found.' };
+  }
+
+  // Decide CTA button label by tier mix; "RSVP" for all-free events.
+  const { data: tierRows } = await supabase
+    .from('ticket_tiers')
+    .select('price_cents')
+    .eq('event_id', eventId);
+  const isFreeEvent =
+    !!tierRows &&
+    tierRows.length > 0 &&
+    tierRows.every((t) => (t.price_cents ?? 0) === 0);
+
+  // Audience: filter to no-ticket holders when scope='no_ticket'. We
+  // collect existing-ticket emails + phones in this event up front so
+  // the per-contact loop can skip them in O(1).
+  let ticketEmails = new Set<string>();
+  let ticketPhones = new Set<string>();
+  if (scope === 'no_ticket') {
+    const { data: tickets } = await supabase
+      .from('tickets')
+      .select('attendee_email, attendee_phone')
+      .eq('event_id', eventId)
+      .in('status', ['confirmed', 'checked_in']);
+    ticketEmails = new Set(
+      (tickets ?? [])
+        .map((t) => ((t.attendee_email as string | null) ?? '').toLowerCase())
+        .filter(Boolean)
+    );
+    ticketPhones = new Set(
+      (tickets ?? [])
+        .map((t) => (t.attendee_phone as string | null) ?? '')
+        .filter(Boolean)
+    );
+  }
+
+  let query = supabase
+    .from('contacts')
+    .select(
+      `id, invitation_channel,
+       master_contacts!inner(first_name, last_name, email, phone)`
+    )
+    .eq('event_id', eventId)
+    .neq('invitation_channel', 'none');
+
+  if (scope === 'selected') {
+    if (!contactIds || contactIds.length === 0) {
+      return { success: false, error: 'No contacts selected.' };
+    }
+    query = query.in('id', contactIds);
+  }
+
+  const { data: contacts, error: contactsError } = await query;
+  if (contactsError) {
+    return { success: false, error: contactsError.message };
+  }
+  if (!contacts || contacts.length === 0) {
+    return { success: false, error: 'No contacts match.' };
+  }
+
+  const venueName = await getVenueName();
+  const origin = getBaseUrl();
+  const eventUrl = `${origin}/e/${event.slug}`;
+  const bannerText = event.location_name ?? venueName;
+  const imageUrl = event.invitation_image_url ?? event.cover_image_url;
+
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
+  const failedDetails: string[] = [];
+
+  for (const contact of contacts) {
+    const master = Array.isArray(contact.master_contacts)
+      ? contact.master_contacts[0]
+      : contact.master_contacts;
+    const first_name = master?.first_name ?? '';
+    const last_name = master?.last_name ?? '';
+    const email = (master?.email as string | null) ?? null;
+    const phone = (master?.phone as string | null) ?? null;
+    const channel = contact.invitation_channel as InvitationChannel;
+
+    // Skip no-ticket scope hits.
+    if (scope === 'no_ticket') {
+      const hasTicket =
+        (!!email && ticketEmails.has(email.toLowerCase())) ||
+        (!!phone && ticketPhones.has(phone));
+      if (hasTicket) {
+        skipped++;
+        continue;
+      }
+    }
+
+    const name = [first_name, last_name].filter(Boolean).join(' ') || 'Guest';
+    const firstName = first_name || 'Guest';
+
+    const sendByEmail =
+      channels.email &&
+      (channel === 'email' || channel === 'both') &&
+      !!email;
+    const sendBySms =
+      channels.sms &&
+      (channel === 'sms' || channel === 'both') &&
+      !!phone;
+
+    if (!sendByEmail && !sendBySms) {
+      skipped++;
+      continue;
+    }
+
+    if (sendByEmail && email) {
+      const emailResult = await sendEmail({
+        to: email,
+        subject,
+        react: TicketReminderEmail({
+          firstName,
+          eventTitle: event.title,
+          eventUrl,
+          venueName,
+          bannerText,
+          headline: subject,
+          body,
+          imageUrl,
+          isFreeEvent,
+        }),
+      });
+
+      await supabase.from('invitation_logs').insert({
+        event_id: eventId,
+        contact_id: contact.id,
+        message_type: 'ticket_reminder',
+        channel: 'email',
+        status: emailResult.success ? 'sent' : 'failed',
+        provider_message_id: emailResult.messageId ?? null,
+      });
+
+      if (emailResult.success) sent++;
+      else {
+        failed++;
+        failedDetails.push(`${name} (email): ${emailResult.error}`);
+      }
+    }
+
+    if (sendBySms && phone) {
+      const smsBody = `${body.trim()} ${eventUrl}`;
+      const smsResult = await sendSms({
+        to: phone,
+        body: smsBody,
+        mediaUrl: toMmsImageUrl(imageUrl),
+      });
+
+      await supabase.from('invitation_logs').insert({
+        event_id: eventId,
+        contact_id: contact.id,
+        message_type: 'ticket_reminder',
+        channel: 'sms',
+        status: smsResult.success ? 'sent' : 'failed',
+        provider_message_id: smsResult.messageId ?? null,
+      });
+
+      if (smsResult.success) sent++;
+      else {
+        failed++;
+        failedDetails.push(`${name} (sms): ${smsResult.error}`);
+      }
+    }
+  }
+
+  return {
+    success: true,
+    data: { sent, failed, skipped, failedDetails },
   };
 }

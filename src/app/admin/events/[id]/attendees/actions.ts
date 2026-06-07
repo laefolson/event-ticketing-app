@@ -5,8 +5,9 @@ import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { isValidPhone, normalizePhone, PHONE_VALIDATION_MESSAGE } from '@/lib/phone';
 import { sendEmail } from '@/lib/resend';
-import { sendSms } from '@/lib/twilio';
+import { sendSms, toMmsImageUrl } from '@/lib/twilio';
 import { TicketConfirmationEmail } from '@/emails/ticket-confirmation-email';
+import { EventUpdateEmail } from '@/emails/event-update-email';
 import { syncMasterContactFromCheckout } from '@/lib/checkout-master-sync';
 import { getVenueName } from '@/lib/settings';
 import { formatDate, formatCents, getBaseUrl, generateTicketCode } from '@/lib/utils';
@@ -749,4 +750,205 @@ export async function resendTickets(
   }
 
   return { success: true, data: result };
+}
+
+// ── Event Updates (broadcast to confirmed attendees) ────────────────────
+
+export type EventUpdateScope = 'all' | 'selected';
+
+const eventUpdateSchema = z.object({
+  eventId: z.string().uuid('Invalid event ID'),
+  scope: z.enum(['all', 'selected']),
+  ticketIds: z.array(z.string().uuid()).optional(),
+  subject: z.string().trim().min(1, 'Subject is required').max(200),
+  body: z.string().trim().min(1, 'Message body is required').max(4000),
+  channels: z.object({
+    email: z.boolean(),
+    sms: z.boolean(),
+  }),
+});
+
+export type SendEventUpdatesInput = z.infer<typeof eventUpdateSchema>;
+
+export interface EventUpdateResult {
+  sent: number;
+  failed: number;
+  skipped: number;
+  recipients: number;
+  failedDetails: string[];
+}
+
+/**
+ * Broadcast a custom subject + body to confirmed/checked-in ticket
+ * holders for this event. Dedupes on `attendee_email` so a multi-
+ * ticket buyer gets one message, not one per ticket. Uses the event
+ * cover image (the invitation image is reserved for sales nudges).
+ * Logs every send to `invitation_logs` as `event_update` so Resend
+ * and Twilio webhooks can mark them delivered/bounced/failed.
+ */
+export async function sendEventUpdates(
+  input: SendEventUpdatesInput
+): Promise<ActionResponse<EventUpdateResult>> {
+  const parsed = eventUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? 'Invalid input',
+    };
+  }
+  const { eventId, scope, ticketIds, subject, body, channels } = parsed.data;
+  if (!channels.email && !channels.sms) {
+    return { success: false, error: 'Pick at least one channel.' };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'You must be logged in.' };
+  }
+
+  const service = createServiceClient();
+
+  const { data: event, error: eventErr } = await service
+    .from('events')
+    .select('id, title, slug, date_start, location_name, cover_image_url')
+    .eq('id', eventId)
+    .single();
+  if (eventErr || !event) {
+    return { success: false, error: 'Event not found.' };
+  }
+
+  let ticketQuery = service
+    .from('tickets')
+    .select('id, attendee_name, attendee_email, attendee_phone, contact_id')
+    .eq('event_id', eventId)
+    .in('status', ['confirmed', 'checked_in']);
+
+  if (scope === 'selected') {
+    if (!ticketIds || ticketIds.length === 0) {
+      return { success: false, error: 'No tickets selected.' };
+    }
+    ticketQuery = ticketQuery.in('id', ticketIds);
+  }
+
+  const { data: tickets, error: ticketsErr } = await ticketQuery;
+  if (ticketsErr) return { success: false, error: ticketsErr.message };
+  if (!tickets || tickets.length === 0) {
+    return { success: false, error: 'No matching attendees.' };
+  }
+
+  // Dedupe by attendee_email. A multi-ticket buyer purchased once and
+  // expects one event-update message, not one per ticket. The first
+  // ticket we encounter for an email becomes the representative — its
+  // name and contact_id seed the email + invitation_logs row.
+  type Rep = {
+    name: string;
+    email: string | null;
+    phone: string | null;
+    contactId: string | null;
+  };
+  const byEmail = new Map<string, Rep>();
+  const phoneOnly: Rep[] = [];
+  for (const t of tickets) {
+    const email = ((t.attendee_email as string | null) ?? '').toLowerCase();
+    const rep: Rep = {
+      name: (t.attendee_name as string) ?? 'Guest',
+      email: (t.attendee_email as string | null) ?? null,
+      phone: (t.attendee_phone as string | null) ?? null,
+      contactId: (t.contact_id as string | null) ?? null,
+    };
+    if (email) {
+      if (!byEmail.has(email)) byEmail.set(email, rep);
+    } else if (rep.phone) {
+      // Phone-only attendees still receive SMS updates if enabled.
+      phoneOnly.push(rep);
+    }
+  }
+  const recipients = [...byEmail.values(), ...phoneOnly];
+
+  const venueName = await getVenueName();
+  const origin = getBaseUrl();
+  const eventUrl = `${origin}/e/${event.slug}`;
+  const bannerText = event.location_name ?? venueName;
+  const imageUrl = event.cover_image_url;
+
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
+  const failedDetails: string[] = [];
+
+  for (const r of recipients) {
+    const firstName = (r.name.split(/\s+/)[0] || 'Guest').trim();
+
+    const willEmail = channels.email && !!r.email;
+    const willSms = channels.sms && !!r.phone;
+    if (!willEmail && !willSms) {
+      skipped++;
+      continue;
+    }
+
+    if (willEmail && r.email) {
+      const emailResult = await sendEmail({
+        to: r.email,
+        subject,
+        react: EventUpdateEmail({
+          firstName,
+          eventTitle: event.title,
+          eventUrl,
+          venueName,
+          bannerText,
+          headline: subject,
+          body,
+          imageUrl,
+        }),
+      });
+
+      await service.from('invitation_logs').insert({
+        event_id: eventId,
+        contact_id: r.contactId,
+        message_type: 'event_update',
+        channel: 'email',
+        status: emailResult.success ? 'sent' : 'failed',
+        provider_message_id: emailResult.messageId ?? null,
+      });
+
+      if (emailResult.success) sent++;
+      else {
+        failed++;
+        failedDetails.push(`${r.name} (email): ${emailResult.error}`);
+      }
+    }
+
+    if (willSms && r.phone) {
+      const smsBody = `${body.trim()} ${eventUrl}`;
+      const smsResult = await sendSms({
+        to: r.phone,
+        body: smsBody,
+        mediaUrl: toMmsImageUrl(imageUrl),
+      });
+
+      await service.from('invitation_logs').insert({
+        event_id: eventId,
+        contact_id: r.contactId,
+        message_type: 'event_update',
+        channel: 'sms',
+        status: smsResult.success ? 'sent' : 'failed',
+        provider_message_id: smsResult.messageId ?? null,
+      });
+
+      if (smsResult.success) sent++;
+      else {
+        failed++;
+        failedDetails.push(`${r.name} (sms): ${smsResult.error}`);
+      }
+    }
+  }
+
+  return {
+    success: true,
+    data: { sent, failed, skipped, recipients: recipients.length, failedDetails },
+  };
 }

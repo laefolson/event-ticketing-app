@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, CheckCircle2, Undo2, Download, Check, Minus, AlertTriangle, Send } from 'lucide-react';
+import { Search, CheckCircle2, Undo2, Download, Check, Minus, AlertTriangle, Send, Megaphone, Mail, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatPrice } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
@@ -34,8 +34,10 @@ import {
 } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { ScanDialog } from './scan-dialog';
-import { toggleCheckIn, resendTickets } from './actions';
+import { toggleCheckIn, resendTickets, sendEventUpdates } from './actions';
+import type { EventUpdateScope, EventUpdateResult } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import type { PaymentMethod, Ticket } from '@/types/database';
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -99,6 +101,17 @@ export function AttendeesManager({
     sendSms: false,
   });
   const [resendPending, startResend] = useTransition();
+
+  // Event Update dialog state — broadcasts a custom subject + body to
+  // confirmed/checked-in ticket holders. Dedupes per email server-side
+  // so a multi-ticket purchase gets one message, not one per ticket.
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [updateSubject, setUpdateSubject] = useState('');
+  const [updateBody, setUpdateBody] = useState('');
+  const [updateChannelEmail, setUpdateChannelEmail] = useState(true);
+  const [updateChannelSms, setUpdateChannelSms] = useState(true);
+  const [updateSending, setUpdateSending] = useState(false);
+  const [updateResult, setUpdateResult] = useState<EventUpdateResult | null>(null);
 
   // Search
   const [search, setSearch] = useState('');
@@ -183,6 +196,76 @@ export function AttendeesManager({
     URL.revokeObjectURL(url);
   }
 
+
+  // Count preview for the Event Update dialog — same per-attendee
+  // dedupe logic that the server action runs, so what the admin sees
+  // matches what gets sent.
+  const updateCounts = useMemo(() => {
+    const active = tickets.filter(
+      (t) => t.status === 'confirmed' || t.status === 'checked_in'
+    );
+    const seenEmails = new Set<string>();
+    let emailRecipients = 0;
+    let smsRecipients = 0;
+    let total = 0;
+    for (const t of active) {
+      const email = (t.attendee_email ?? '').toLowerCase();
+      if (email) {
+        if (seenEmails.has(email)) continue;
+        seenEmails.add(email);
+      }
+      total++;
+      if (updateChannelEmail && t.attendee_email) emailRecipients++;
+      if (updateChannelSms && t.attendee_phone) smsRecipients++;
+    }
+    return { total, emailRecipients, smsRecipients };
+  }, [tickets, updateChannelEmail, updateChannelSms]);
+
+  function openUpdateDialog() {
+    setUpdateSubject('');
+    setUpdateBody('');
+    setUpdateChannelEmail(true);
+    setUpdateChannelSms(true);
+    setUpdateResult(null);
+    setUpdateDialogOpen(true);
+  }
+
+  function closeUpdateDialog() {
+    if (updateSending) return;
+    setUpdateDialogOpen(false);
+    if (updateResult) router.refresh();
+  }
+
+  async function handleSendUpdates() {
+    if (!updateSubject.trim() || !updateBody.trim()) {
+      toast.error('Subject and message body are required.');
+      return;
+    }
+    if (!updateChannelEmail && !updateChannelSms) {
+      toast.error('Pick at least one channel.');
+      return;
+    }
+    setUpdateSending(true);
+    const res = await sendEventUpdates({
+      eventId,
+      scope: 'all' as EventUpdateScope,
+      subject: updateSubject.trim(),
+      body: updateBody.trim(),
+      channels: { email: updateChannelEmail, sms: updateChannelSms },
+    });
+    setUpdateSending(false);
+    if (res.success && res.data) {
+      setUpdateResult(res.data);
+    } else {
+      setUpdateResult({
+        sent: 0,
+        failed: 0,
+        skipped: 0,
+        recipients: 0,
+        failedDetails: [res.error ?? 'Failed to send updates'],
+      });
+    }
+  }
 
   // Resend Tickets handlers — opens the dialog prefilled with whatever
   // the ticket currently has, defaulting to whichever channels are
@@ -282,6 +365,14 @@ export function AttendeesManager({
         </h2>
         <div className="flex items-center gap-2">
           <ScanDialog eventId={eventId} />
+          <Button
+            variant="outline"
+            onClick={openUpdateDialog}
+            disabled={tickets.length === 0}
+          >
+            <Megaphone className="mr-2 h-4 w-4" />
+            Send Update
+          </Button>
           <Button variant="outline" onClick={handleExportCsv} disabled={tickets.length === 0}>
             <Download className="mr-2 h-4 w-4" />
             Export CSV
@@ -603,6 +694,152 @@ export function AttendeesManager({
               {resendPending ? 'Sending…' : 'Send'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Update Dialog */}
+      <Dialog
+        open={updateDialogOpen}
+        onOpenChange={(o) => {
+          if (!o) closeUpdateDialog();
+          else setUpdateDialogOpen(true);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {updateResult ? 'Update Sent' : 'Send Event Update'}
+            </DialogTitle>
+            <DialogDescription>
+              {updateResult
+                ? 'Here are the results of your update send.'
+                : 'Broadcast a custom message to everyone with a confirmed or checked-in ticket. The event cover image is attached.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {updateResult ? (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 rounded-lg border border-green-300 bg-green-50 p-4 dark:border-green-700 dark:bg-green-950">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium text-green-800 dark:text-green-200">
+                    {updateResult.sent} message{updateResult.sent !== 1 ? 's' : ''} sent
+                  </p>
+                  <p className="text-muted-foreground">
+                    {updateResult.recipients} attendee{updateResult.recipients !== 1 ? 's' : ''} reached
+                  </p>
+                  {updateResult.skipped > 0 && (
+                    <p className="text-muted-foreground">
+                      {updateResult.skipped} skipped (no matching channel)
+                    </p>
+                  )}
+                  {updateResult.failed > 0 && (
+                    <p className="text-red-700 dark:text-red-300">
+                      {updateResult.failed} failed
+                    </p>
+                  )}
+                </div>
+              </div>
+              {updateResult.failedDetails.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Failures:</p>
+                  <div className="max-h-40 overflow-y-auto rounded-md border p-3 text-xs">
+                    {updateResult.failedDetails.map((d, i) => (
+                      <div key={i} className="text-muted-foreground py-0.5">
+                        {d}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <DialogFooter>
+                <Button onClick={closeUpdateDialog}>Done</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="update-subject">Subject *</Label>
+                <Input
+                  id="update-subject"
+                  value={updateSubject}
+                  onChange={(e) => setUpdateSubject(e.target.value)}
+                  placeholder="Weather update + parking reminder"
+                  maxLength={200}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="update-body">Message *</Label>
+                <Textarea
+                  id="update-body"
+                  rows={6}
+                  value={updateBody}
+                  onChange={(e) => setUpdateBody(e.target.value)}
+                  placeholder="Heads up — light rain in the forecast, but we're still on. Park in the south field; the north entrance will be closed."
+                  maxLength={4000}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The message becomes the body of the email and the SMS. The
+                  event cover image is attached automatically.
+                </p>
+              </div>
+
+              <div className="rounded-md border p-3 space-y-2">
+                <p className="text-sm font-medium">Channels</p>
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <Checkbox
+                      checked={updateChannelEmail}
+                      onCheckedChange={(v) => setUpdateChannelEmail(v === true)}
+                    />
+                    <Mail className="h-3.5 w-3.5" />
+                    Email
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <Checkbox
+                      checked={updateChannelSms}
+                      onCheckedChange={(v) => setUpdateChannelSms(v === true)}
+                    />
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    SMS
+                  </label>
+                </div>
+                <div className="flex items-center gap-4 text-sm text-muted-foreground pt-1">
+                  <span>
+                    {updateCounts.total} attendee{updateCounts.total !== 1 ? 's' : ''} reached
+                  </span>
+                  <span>
+                    Up to {updateCounts.emailRecipients} email{updateCounts.emailRecipients !== 1 ? 's' : ''}
+                  </span>
+                  <span>
+                    Up to {updateCounts.smsRecipients} SMS
+                  </span>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={closeUpdateDialog}
+                  disabled={updateSending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSendUpdates}
+                  disabled={
+                    updateSending ||
+                    !updateSubject.trim() ||
+                    !updateBody.trim() ||
+                    (!updateChannelEmail && !updateChannelSms) ||
+                    updateCounts.total === 0
+                  }
+                >
+                  {updateSending ? 'Sending…' : 'Send'}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
