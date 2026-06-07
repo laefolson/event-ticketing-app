@@ -35,9 +35,20 @@ import {
 import { toast } from 'sonner';
 import { ScanDialog } from './scan-dialog';
 import { toggleCheckIn, resendTickets, sendEventUpdates } from './actions';
-import type { EventUpdateScope, EventUpdateResult } from './actions';
+import type {
+  EventUpdateScope,
+  EventUpdateChannelMode,
+  EventUpdateResult,
+} from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { PaymentMethod, Ticket } from '@/types/database';
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -105,13 +116,20 @@ export function AttendeesManager({
   // Event Update dialog state — broadcasts a custom subject + body to
   // confirmed/checked-in ticket holders. Dedupes per email server-side
   // so a multi-ticket purchase gets one message, not one per ticket.
+  // Channel mode: smart routes each attendee to SMS-if-opted-in, else
+  // email; email_only never texts.
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updateSubject, setUpdateSubject] = useState('');
   const [updateBody, setUpdateBody] = useState('');
-  const [updateChannelEmail, setUpdateChannelEmail] = useState(true);
-  const [updateChannelSms, setUpdateChannelSms] = useState(true);
+  const [updateChannelMode, setUpdateChannelMode] = useState<EventUpdateChannelMode>('smart');
+  const [updateScope, setUpdateScope] = useState<EventUpdateScope>('all');
   const [updateSending, setUpdateSending] = useState(false);
   const [updateResult, setUpdateResult] = useState<EventUpdateResult | null>(null);
+
+  // Multi-select for Send Update — picks specific attendees instead of
+  // broadcasting to all. Selection clears whenever the visible list
+  // changes so an admin can't act on rows they can't currently see.
+  const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(new Set());
 
   // Search
   const [search, setSearch] = useState('');
@@ -147,6 +165,59 @@ export function AttendeesManager({
         (t.attendee_email && t.attendee_email.toLowerCase().includes(q))
     );
   }, [tickets, search]);
+
+  // Treat selection as "intersection with currently visible rows" at
+  // every read site. That way an admin narrowing the search can't act
+  // on rows they can't see, but their picks are restored if they
+  // widen the search again. No effect needed.
+  const effectiveSelectedTicketIds = useMemo(() => {
+    if (selectedTicketIds.size === 0) return selectedTicketIds;
+    const visibleIds = new Set(filteredTickets.map((t) => t.id));
+    const next = new Set<string>();
+    for (const id of selectedTicketIds) {
+      if (visibleIds.has(id)) next.add(id);
+    }
+    return next;
+  }, [filteredTickets, selectedTicketIds]);
+
+  function toggleTicketSelection(id: string) {
+    setSelectedTicketIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Header checkbox state — counts what's selectable (active rows
+  // only; refunded tickets can't be messaged) so the indeterminate /
+  // checked logic matches what clicking it actually does.
+  const selectableVisibleIds = useMemo(
+    () =>
+      filteredTickets
+        .filter((t) => t.status === 'confirmed' || t.status === 'checked_in')
+        .map((t) => t.id),
+    [filteredTickets]
+  );
+  const visibleSelectedCount = selectableVisibleIds.reduce(
+    (n, id) => n + (selectedTicketIds.has(id) ? 1 : 0),
+    0
+  );
+  const allVisibleSelected =
+    selectableVisibleIds.length > 0 &&
+    visibleSelectedCount === selectableVisibleIds.length;
+  const someVisibleSelected = visibleSelectedCount > 0 && !allVisibleSelected;
+
+  function toggleAllVisible(shouldSelect: boolean) {
+    setSelectedTicketIds((prev) => {
+      const next = new Set(prev);
+      for (const id of selectableVisibleIds) {
+        if (shouldSelect) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
 
   // Build phone-based consent lookup sets
   const { eventOptInPhones, marketingOptInPhones } = useMemo(() => {
@@ -197,43 +268,61 @@ export function AttendeesManager({
   }
 
 
-  // Count preview for the Event Update dialog — same per-attendee
-  // dedupe logic that the server action runs, so what the admin sees
-  // matches what gets sent. SMS preview only counts phones that have
-  // an event_updates consent record for this event (eventOptInPhones,
-  // derived from sms_consents). That mirrors the server-side gate.
+  // Count preview for the Event Update dialog — mirrors the server
+  // routing exactly so the numbers match. Iterates the candidate
+  // ticket pool (filtered by scope), dedupes by attendee email so a
+  // multi-ticket purchase counts once, then applies the channel-mode
+  // routing per attendee. SMS only counts phones with an event_updates
+  // consent record (eventOptInPhones, from sms_consents).
   const updateCounts = useMemo(() => {
-    const active = tickets.filter(
+    let pool = tickets.filter(
       (t) => t.status === 'confirmed' || t.status === 'checked_in'
     );
+    if (updateScope === 'selected') {
+      pool = pool.filter((t) => effectiveSelectedTicketIds.has(t.id));
+    }
     const seenEmails = new Set<string>();
-    let emailRecipients = 0;
-    let smsRecipients = 0;
-    let total = 0;
-    for (const t of active) {
+    let emailRoute = 0;
+    let smsRoute = 0;
+    let skipped = 0;
+    for (const t of pool) {
       const email = (t.attendee_email ?? '').toLowerCase();
       if (email) {
         if (seenEmails.has(email)) continue;
         seenEmails.add(email);
       }
-      total++;
-      if (updateChannelEmail && t.attendee_email) emailRecipients++;
-      if (
-        updateChannelSms &&
-        t.attendee_phone &&
-        hasConsent(t.attendee_phone, eventOptInPhones)
-      ) {
-        smsRecipients++;
+      const optedIn =
+        !!t.attendee_phone && hasConsent(t.attendee_phone, eventOptInPhones);
+      let route: 'sms' | 'email' | null = null;
+      if (updateChannelMode === 'smart') {
+        if (optedIn && t.attendee_phone) route = 'sms';
+        else if (t.attendee_email) route = 'email';
+      } else {
+        if (t.attendee_email) route = 'email';
       }
+      if (route === 'sms') smsRoute++;
+      else if (route === 'email') emailRoute++;
+      else skipped++;
     }
-    return { total, emailRecipients, smsRecipients };
-  }, [tickets, updateChannelEmail, updateChannelSms, eventOptInPhones]);
+    return {
+      total: smsRoute + emailRoute,
+      emailRoute,
+      smsRoute,
+      skipped,
+    };
+  }, [
+    tickets,
+    updateChannelMode,
+    updateScope,
+    effectiveSelectedTicketIds,
+    eventOptInPhones,
+  ]);
 
   function openUpdateDialog() {
     setUpdateSubject('');
     setUpdateBody('');
-    setUpdateChannelEmail(true);
-    setUpdateChannelSms(true);
+    setUpdateChannelMode('smart');
+    setUpdateScope(effectiveSelectedTicketIds.size > 0 ? 'selected' : 'all');
     setUpdateResult(null);
     setUpdateDialogOpen(true);
   }
@@ -249,28 +338,32 @@ export function AttendeesManager({
       toast.error('Subject and message body are required.');
       return;
     }
-    if (!updateChannelEmail && !updateChannelSms) {
-      toast.error('Pick at least one channel.');
+    if (updateScope === 'selected' && effectiveSelectedTicketIds.size === 0) {
+      toast.error('Select at least one attendee.');
       return;
     }
     setUpdateSending(true);
     const res = await sendEventUpdates({
       eventId,
-      scope: 'all' as EventUpdateScope,
+      scope: updateScope,
+      ticketIds:
+        updateScope === 'selected'
+          ? Array.from(effectiveSelectedTicketIds)
+          : undefined,
       subject: updateSubject.trim(),
       body: updateBody.trim(),
-      channels: { email: updateChannelEmail, sms: updateChannelSms },
+      channelMode: updateChannelMode,
     });
     setUpdateSending(false);
     if (res.success && res.data) {
       setUpdateResult(res.data);
     } else {
       setUpdateResult({
-        sent: 0,
-        failed: 0,
-        skipped: 0,
-        skippedNoOptIn: 0,
         recipients: 0,
+        skipped: 0,
+        emailSent: 0,
+        smsSent: 0,
+        failed: 0,
         failedDetails: [res.error ?? 'Failed to send updates'],
       });
     }
@@ -441,6 +534,19 @@ export function AttendeesManager({
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={
+                        allVisibleSelected
+                          ? true
+                          : someVisibleSelected
+                            ? 'indeterminate'
+                            : false
+                      }
+                      onCheckedChange={(v) => toggleAllVisible(v === true)}
+                      aria-label="Select all visible attendees"
+                    />
+                  </TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Phone</TableHead>
@@ -459,7 +565,7 @@ export function AttendeesManager({
                 {filteredTickets.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={12}
+                      colSpan={13}
                       className="text-muted-foreground h-24 text-center"
                     >
                       No attendees match your search.
@@ -473,6 +579,15 @@ export function AttendeesManager({
 
                     return (
                       <TableRow key={ticket.id} className={isRefunded ? 'opacity-60' : undefined}>
+                        <TableCell className="w-10">
+                          {!isRefunded && (
+                            <Checkbox
+                              checked={effectiveSelectedTicketIds.has(ticket.id)}
+                              onCheckedChange={() => toggleTicketSelection(ticket.id)}
+                              aria-label={`Select ${ticket.attendee_name}`}
+                            />
+                          )}
+                        </TableCell>
                         <TableCell className="font-medium">
                           {ticket.attendee_name}
                         </TableCell>
@@ -732,19 +847,17 @@ export function AttendeesManager({
                 <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
                 <div className="space-y-1 text-sm">
                   <p className="font-medium text-green-800 dark:text-green-200">
-                    {updateResult.sent} message{updateResult.sent !== 1 ? 's' : ''} sent
+                    {updateResult.recipients} attendee
+                    {updateResult.recipients !== 1 ? 's' : ''} reached
                   </p>
                   <p className="text-muted-foreground">
-                    {updateResult.recipients} attendee{updateResult.recipients !== 1 ? 's' : ''} reached
+                    {updateResult.emailSent} email
+                    {updateResult.emailSent !== 1 ? 's' : ''} · {updateResult.smsSent} SMS
                   </p>
                   {updateResult.skipped > 0 && (
                     <p className="text-muted-foreground">
-                      {updateResult.skipped} skipped (no matching channel)
-                    </p>
-                  )}
-                  {updateResult.skippedNoOptIn > 0 && (
-                    <p className="text-muted-foreground">
-                      {updateResult.skippedNoOptIn} SMS skipped — recipient hasn&rsquo;t opted in to event updates
+                      {updateResult.skipped} skipped — no email on file
+                      {' '}{/* smart-mode SMS-eligible recipients always have a fallback to email if it exists */}
                     </p>
                   )}
                   {updateResult.failed > 0 && (
@@ -798,42 +911,62 @@ export function AttendeesManager({
                 </p>
               </div>
 
-              <div className="rounded-md border p-3 space-y-2">
-                <p className="text-sm font-medium">Channels</p>
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer text-sm">
-                    <Checkbox
-                      checked={updateChannelEmail}
-                      onCheckedChange={(v) => setUpdateChannelEmail(v === true)}
-                    />
-                    <Mail className="h-3.5 w-3.5" />
-                    Email
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer text-sm">
-                    <Checkbox
-                      checked={updateChannelSms}
-                      onCheckedChange={(v) => setUpdateChannelSms(v === true)}
-                    />
-                    <MessageSquare className="h-3.5 w-3.5" />
-                    SMS
-                  </label>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="update-scope">Who to send to</Label>
+                <Select
+                  value={updateScope}
+                  onValueChange={(v) => setUpdateScope(v as EventUpdateScope)}
+                >
+                  <SelectTrigger id="update-scope" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All confirmed attendees</SelectItem>
+                    <SelectItem
+                      value="selected"
+                      disabled={effectiveSelectedTicketIds.size === 0}
+                    >
+                      Selected attendees ({effectiveSelectedTicketIds.size})
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="update-channel-mode">Channel</Label>
+                <Select
+                  value={updateChannelMode}
+                  onValueChange={(v) => setUpdateChannelMode(v as EventUpdateChannelMode)}
+                >
+                  <SelectTrigger id="update-channel-mode" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="smart">
+                      Smart — SMS if opted in, otherwise email
+                    </SelectItem>
+                    <SelectItem value="email_only">Email only</SelectItem>
+                  </SelectContent>
+                </Select>
                 <div className="flex items-center gap-4 text-sm text-muted-foreground pt-1">
-                  <span>
-                    {updateCounts.total} attendee{updateCounts.total !== 1 ? 's' : ''} reached
+                  <span className="inline-flex items-center gap-1">
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    {updateCounts.smsRoute} via SMS
                   </span>
-                  <span>
-                    Up to {updateCounts.emailRecipients} email{updateCounts.emailRecipients !== 1 ? 's' : ''}
+                  <span className="inline-flex items-center gap-1">
+                    <Mail className="h-3.5 w-3.5" />
+                    {updateCounts.emailRoute} via email
                   </span>
-                  <span>
-                    Up to {updateCounts.smsRecipients} SMS
-                  </span>
+                  {updateCounts.skipped > 0 && (
+                    <span>
+                      {updateCounts.skipped} skipped (no email on file)
+                    </span>
+                  )}
                 </div>
-                {updateChannelSms && (
-                  <p className="text-xs text-muted-foreground">
-                    SMS goes only to attendees who opted in to event-update texts at checkout.
-                  </p>
-                )}
+                <p className="text-xs text-muted-foreground">
+                  Each attendee gets a single message — SMS is preferred for
+                  opted-in phones, email is the fallback.
+                </p>
               </div>
 
               <DialogFooter>
@@ -850,7 +983,6 @@ export function AttendeesManager({
                     updateSending ||
                     !updateSubject.trim() ||
                     !updateBody.trim() ||
-                    (!updateChannelEmail && !updateChannelSms) ||
                     updateCounts.total === 0
                   }
                 >

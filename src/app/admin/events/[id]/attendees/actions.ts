@@ -755,6 +755,7 @@ export async function resendTickets(
 // ── Event Updates (broadcast to confirmed attendees) ────────────────────
 
 export type EventUpdateScope = 'all' | 'selected';
+export type EventUpdateChannelMode = 'smart' | 'email_only';
 
 const eventUpdateSchema = z.object({
   eventId: z.string().uuid('Invalid event ID'),
@@ -762,21 +763,22 @@ const eventUpdateSchema = z.object({
   ticketIds: z.array(z.string().uuid()).optional(),
   subject: z.string().trim().min(1, 'Subject is required').max(200),
   body: z.string().trim().min(1, 'Message body is required').max(4000),
-  channels: z.object({
-    email: z.boolean(),
-    sms: z.boolean(),
-  }),
+  channelMode: z.enum(['smart', 'email_only']),
 });
 
 export type SendEventUpdatesInput = z.infer<typeof eventUpdateSchema>;
 
 export interface EventUpdateResult {
-  sent: number;
-  failed: number;
-  skipped: number;
-  /** Recipients whose phone wasn't on the event-updates opt-in list. */
-  skippedNoOptIn: number;
+  /** Attendees who got at least one message (email OR SMS, not both). */
   recipients: number;
+  /** Attendees with no eligible channel (no email, and not opted in for SMS). */
+  skipped: number;
+  /** Count of SMS messages sent. */
+  smsSent: number;
+  /** Count of email messages sent. */
+  emailSent: number;
+  /** Count of delivery failures across both channels. */
+  failed: number;
   failedDetails: string[];
 }
 
@@ -798,10 +800,7 @@ export async function sendEventUpdates(
       error: parsed.error.issues[0]?.message ?? 'Invalid input',
     };
   }
-  const { eventId, scope, ticketIds, subject, body, channels } = parsed.data;
-  if (!channels.email && !channels.sms) {
-    return { success: false, error: 'Pick at least one channel.' };
-  }
+  const { eventId, scope, ticketIds, subject, body, channelMode } = parsed.data;
 
   const supabase = await createClient();
   const {
@@ -895,28 +894,35 @@ export async function sendEventUpdates(
   const bannerText = event.location_name ?? venueName;
   const imageUrl = event.cover_image_url;
 
-  let sent = 0;
+  let emailSent = 0;
+  let smsSent = 0;
   let failed = 0;
   let skipped = 0;
-  let skippedNoOptIn = 0;
+  let recipientsReached = 0;
   const failedDetails: string[] = [];
 
   for (const r of recipients) {
     const firstName = (r.name.split(/\s+/)[0] || 'Guest').trim();
-
-    const willEmail = channels.email && !!r.email;
     const phoneDigits = r.phone ? r.phone.replace(/\D/g, '') : '';
     const phoneOptedIn = !!phoneDigits && optedInPhones.has(phoneDigits);
-    const willSms = channels.sms && !!r.phone && phoneOptedIn;
-    if (channels.sms && r.phone && !phoneOptedIn) {
-      skippedNoOptIn++;
+
+    // One channel per attendee. In smart mode, SMS wins if they opted
+    // in — texts cut through noise for time-sensitive updates. In
+    // email_only mode, SMS is never used.
+    let preferredChannel: 'sms' | 'email' | null = null;
+    if (channelMode === 'smart') {
+      if (phoneOptedIn && r.phone) preferredChannel = 'sms';
+      else if (r.email) preferredChannel = 'email';
+    } else {
+      if (r.email) preferredChannel = 'email';
     }
-    if (!willEmail && !willSms) {
+
+    if (!preferredChannel) {
       skipped++;
       continue;
     }
 
-    if (willEmail && r.email) {
+    if (preferredChannel === 'email' && r.email) {
       const emailResult = await sendEmail({
         to: r.email,
         subject,
@@ -941,14 +947,14 @@ export async function sendEventUpdates(
         provider_message_id: emailResult.messageId ?? null,
       });
 
-      if (emailResult.success) sent++;
-      else {
+      if (emailResult.success) {
+        emailSent++;
+        recipientsReached++;
+      } else {
         failed++;
         failedDetails.push(`${r.name} (email): ${emailResult.error}`);
       }
-    }
-
-    if (willSms && r.phone) {
+    } else if (preferredChannel === 'sms' && r.phone) {
       const smsBody = `${body.trim()} ${eventUrl}`;
       const smsResult = await sendSms({
         to: r.phone,
@@ -965,8 +971,10 @@ export async function sendEventUpdates(
         provider_message_id: smsResult.messageId ?? null,
       });
 
-      if (smsResult.success) sent++;
-      else {
+      if (smsResult.success) {
+        smsSent++;
+        recipientsReached++;
+      } else {
         failed++;
         failedDetails.push(`${r.name} (sms): ${smsResult.error}`);
       }
@@ -976,11 +984,11 @@ export async function sendEventUpdates(
   return {
     success: true,
     data: {
-      sent,
-      failed,
+      recipients: recipientsReached,
       skipped,
-      skippedNoOptIn,
-      recipients: recipients.length,
+      emailSent,
+      smsSent,
+      failed,
       failedDetails,
     },
   };

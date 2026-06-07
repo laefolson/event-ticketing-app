@@ -86,6 +86,10 @@ interface ContactsManagerProps {
   csvImports: CsvImport[];
   eventId: string;
   tiers: CreateTicketTier[];
+  /** Lowercased emails of attendees who already have a ticket. */
+  ticketedEmails: string[];
+  /** Digits-only phones of attendees who already have a ticket. */
+  ticketedPhones: string[];
   priorEvents: { id: string; title: string }[];
   pastContributors: string[];
 }
@@ -131,6 +135,8 @@ export function ContactsManager({
   csvImports,
   eventId,
   tiers,
+  ticketedEmails,
+  ticketedPhones,
   priorEvents,
   pastContributors,
 }: ContactsManagerProps) {
@@ -326,11 +332,34 @@ export function ContactsManager({
   // Ticket Reminder handlers — count preview mirrors the invite dialog
   // but adds a no_ticket filter that walks confirmed/checked-in tickets
   // in this event to subtract anyone who already bought.
+  // Pre-built lookup sets for the "Invited, no ticket yet" filter.
+  // useMemo so the Set isn't rebuilt on every keystroke.
+  const ticketedEmailSet = useMemo(
+    () => new Set(ticketedEmails),
+    [ticketedEmails]
+  );
+  const ticketedPhoneSet = useMemo(
+    () => new Set(ticketedPhones),
+    [ticketedPhones]
+  );
+
   const reminderCounts = useMemo(() => {
     const eligible = contacts.filter((c) => c.invitation_channel !== 'none');
     let target: ContactWithMaster[];
     if (reminderScope === 'selected') {
       target = eligible.filter((c) => selectedContactIds.has(c.id));
+    } else if (reminderScope === 'no_ticket') {
+      // Mirror the server-side filter: exclude contacts whose master
+      // email or phone shows up on a confirmed/checked-in ticket.
+      target = eligible.filter((c) => {
+        const m = c.master_contacts;
+        const email = (m.email ?? '').toLowerCase();
+        const phoneDigits = (m.phone ?? '').replace(/\D/g, '');
+        const hasTicket =
+          (!!email && ticketedEmailSet.has(email)) ||
+          (!!phoneDigits && ticketedPhoneSet.has(phoneDigits));
+        return !hasTicket;
+      });
     } else {
       target = eligible;
     }
@@ -357,6 +386,8 @@ export function ContactsManager({
     selectedContactIds,
     reminderChannelEmail,
     reminderChannelSms,
+    ticketedEmailSet,
+    ticketedPhoneSet,
   ]);
 
   function openReminderDialog() {

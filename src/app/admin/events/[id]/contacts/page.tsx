@@ -56,6 +56,30 @@ export default async function ContactsPage({ params }: ContactsPageProps) {
     .eq('event_id', id)
     .order('sort_order', { ascending: true });
 
+  // Used by the Send Reminder dialog so the "Invited, no ticket yet"
+  // scope count can subtract contacts whose email or phone already
+  // appears on a confirmed/checked-in ticket. Mirrors the server-side
+  // filter in sendTicketReminders.
+  const { data: existingTicketRows } = await supabase
+    .from('tickets')
+    .select('attendee_email, attendee_phone')
+    .eq('event_id', id)
+    .in('status', ['confirmed', 'checked_in']);
+  const ticketedEmails = Array.from(
+    new Set(
+      (existingTicketRows ?? [])
+        .map((t) => ((t.attendee_email as string | null) ?? '').toLowerCase())
+        .filter(Boolean)
+    )
+  );
+  const ticketedPhones = Array.from(
+    new Set(
+      (existingTicketRows ?? [])
+        .map((t) => ((t.attendee_phone as string | null) ?? '').replace(/\D/g, ''))
+        .filter(Boolean)
+    )
+  );
+
   const pastContributors = await listContributors();
 
   return (
@@ -64,6 +88,8 @@ export default async function ContactsPage({ params }: ContactsPageProps) {
       csvImports={csvImports ?? []}
       eventId={event.id}
       tiers={tiers ?? []}
+      ticketedEmails={ticketedEmails}
+      ticketedPhones={ticketedPhones}
       priorEvents={(priorEventsData ?? []).map((e) => ({
         id: e.id as string,
         title: e.title as string,
