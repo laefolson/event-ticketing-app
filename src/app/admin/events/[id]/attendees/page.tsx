@@ -31,12 +31,6 @@ export default async function AttendeesPage({ params }: AttendeesPageProps) {
     .in('status', ['confirmed', 'checked_in', 'refunded'])
     .order('purchased_at', { ascending: false });
 
-  const { data: tiers } = await supabase
-    .from('ticket_tiers')
-    .select('id, name, price_cents, quantity_total, quantity_sold')
-    .eq('event_id', id)
-    .order('sort_order', { ascending: true });
-
   // RLS on sms_consents is service-role-only, so use service client
   const serviceClient = createServiceClient();
   const { data: smsConsents } = await serviceClient
@@ -89,7 +83,6 @@ export default async function AttendeesPage({ params }: AttendeesPageProps) {
   return (
     <AttendeesManager
       tickets={tickets ?? []}
-      tiers={tiers ?? []}
       eventId={event.id}
       smsConsents={smsConsents ?? []}
       bounceByEmail={bounceByEmail}

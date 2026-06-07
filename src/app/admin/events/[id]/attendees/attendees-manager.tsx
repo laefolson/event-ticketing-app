@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useMemo, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, CheckCircle2, Undo2, Download, Check, Minus, AlertTriangle, Send } from 'lucide-react';
+import { Search, CheckCircle2, Undo2, Download, Check, Minus, AlertTriangle, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatPrice } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
@@ -25,13 +25,6 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Table,
   TableBody,
   TableCell,
@@ -40,20 +33,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Switch } from '@/components/ui/switch';
 import { ScanDialog } from './scan-dialog';
-import { createManualTicket, toggleCheckIn, resendTickets } from './actions';
+import { toggleCheckIn, resendTickets } from './actions';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { PaymentMethod, Ticket, TicketTier } from '@/types/database';
-
-const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'venmo', label: 'Venmo' },
-  { value: 'paypal', label: 'PayPal' },
-  { value: 'check', label: 'Check' },
-  { value: 'comp', label: 'Comp' },
-  { value: 'other', label: 'Other' },
-];
+import type { PaymentMethod, Ticket } from '@/types/database';
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   stripe: 'Stripe',
@@ -73,11 +56,6 @@ type TicketWithTier = Ticket & {
   ticket_tiers: { id: string; name: string; price_cents: number } | null;
 };
 
-type TierOption = Pick<
-  TicketTier,
-  'id' | 'name' | 'price_cents' | 'quantity_total' | 'quantity_sold'
->;
-
 interface SmsConsent {
   phone: string;
   consent_type: string;
@@ -85,25 +63,10 @@ interface SmsConsent {
 
 interface AttendeesManagerProps {
   tickets: TicketWithTier[];
-  tiers: TierOption[];
   eventId: string;
   smsConsents: SmsConsent[];
   bounceByEmail: Record<string, { status: string; error_code: string | null }>;
 }
-
-const emptyAddTicketForm = {
-  tier_id: '',
-  attendee_name: '',
-  attendee_email: '',
-  attendee_phone: '',
-  quantity: 1,
-  amount_dollars: '',
-  payment_method: 'cash' as PaymentMethod,
-  payment_note: '',
-  deliver_email: false,
-  deliver_sms: false,
-};
-
 
 function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, '');
@@ -118,18 +81,11 @@ function escapeCsvValue(value: string): string {
 
 export function AttendeesManager({
   tickets,
-  tiers,
   eventId,
   smsConsents,
   bounceByEmail,
 }: AttendeesManagerProps) {
   const router = useRouter();
-
-  // Add Ticket dialog state
-  const [addTicketOpen, setAddTicketOpen] = useState(false);
-  const [addTicketForm, setAddTicketForm] = useState(emptyAddTicketForm);
-  const [addTicketPending, setAddTicketPending] = useState(false);
-  const [addTicketError, setAddTicketError] = useState<string | null>(null);
 
   // Resend Tickets dialog state — opened from a row, prefills email/phone
   // from the clicked ticket. Bundle size is computed from current
@@ -227,92 +183,6 @@ export function AttendeesManager({
     URL.revokeObjectURL(url);
   }
 
-  // Add Ticket handlers
-  function openAddTicket() {
-    setAddTicketForm(emptyAddTicketForm);
-    setAddTicketError(null);
-    setAddTicketOpen(true);
-  }
-
-  const selectedTier = tiers.find((t) => t.id === addTicketForm.tier_id);
-  const compIsActive = addTicketForm.payment_method === 'comp';
-
-  function handleTierChange(tierId: string) {
-    const t = tiers.find((tier) => tier.id === tierId);
-    if (!t) {
-      setAddTicketForm({ ...addTicketForm, tier_id: tierId });
-      return;
-    }
-    const newDollars = compIsActive
-      ? '0.00'
-      : ((t.price_cents * addTicketForm.quantity) / 100).toFixed(2);
-    setAddTicketForm({ ...addTicketForm, tier_id: tierId, amount_dollars: newDollars });
-  }
-
-  function handleQuantityChange(next: number) {
-    const q = Math.max(1, next);
-    let newDollars = addTicketForm.amount_dollars;
-    if (selectedTier && !compIsActive) {
-      newDollars = ((selectedTier.price_cents * q) / 100).toFixed(2);
-    }
-    setAddTicketForm({ ...addTicketForm, quantity: q, amount_dollars: newDollars });
-  }
-
-  function toggleComp(on: boolean) {
-    if (on) {
-      setAddTicketForm({ ...addTicketForm, payment_method: 'comp', amount_dollars: '0.00' });
-    } else {
-      const refilled = selectedTier
-        ? ((selectedTier.price_cents * addTicketForm.quantity) / 100).toFixed(2)
-        : '';
-      setAddTicketForm({ ...addTicketForm, payment_method: 'cash', amount_dollars: refilled });
-    }
-  }
-
-  async function handleAddTicketSave() {
-    setAddTicketError(null);
-    setAddTicketPending(true);
-
-    const dollars = parseFloat(addTicketForm.amount_dollars);
-    if (Number.isNaN(dollars) || dollars < 0) {
-      setAddTicketError('Enter a valid amount paid.');
-      setAddTicketPending(false);
-      return;
-    }
-    const amount_paid_cents = Math.round(dollars * 100);
-
-    const result = await createManualTicket(eventId, {
-      tier_id: addTicketForm.tier_id,
-      attendee_name: addTicketForm.attendee_name,
-      attendee_email: addTicketForm.attendee_email || null,
-      attendee_phone: addTicketForm.attendee_phone || null,
-      quantity: addTicketForm.quantity,
-      amount_paid_cents,
-      payment_method: addTicketForm.payment_method,
-      payment_note: addTicketForm.payment_note.trim() || null,
-      deliver_email: addTicketForm.deliver_email,
-      deliver_sms: addTicketForm.deliver_sms,
-    });
-
-    setAddTicketPending(false);
-
-    if (!result.success) {
-      setAddTicketError(result.error ?? 'Something went wrong.');
-      return;
-    }
-
-    const data = result.data!;
-    const parts: string[] = ['Ticket created'];
-    if (data.emailSent) parts.push('email sent');
-    if (data.smsSent) parts.push('SMS sent');
-    if (data.deliveryError) {
-      toast.warning(`${parts.join(' · ')} — ${data.deliveryError}`);
-    } else {
-      toast.success(parts.join(' · '));
-    }
-    setAddTicketOpen(false);
-    router.refresh();
-  }
 
   // Resend Tickets handlers — opens the dialog prefilled with whatever
   // the ticket currently has, defaulting to whichever channels are
@@ -416,10 +286,6 @@ export function AttendeesManager({
             <Download className="mr-2 h-4 w-4" />
             Export CSV
           </Button>
-          <Button onClick={openAddTicket}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Ticket
-          </Button>
         </div>
       </div>
 
@@ -451,12 +317,10 @@ export function AttendeesManager({
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <p className="text-muted-foreground mb-4">
-              No confirmed attendees yet. Add a ticket manually to get started.
+              No confirmed attendees yet. Tickets show up here once they&rsquo;re
+              purchased; you can also create one for a contact from the
+              Contacts tab (useful for comps and Venmo payments).
             </p>
-            <Button variant="outline" onClick={openAddTicket}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Ticket
-            </Button>
           </CardContent>
         </Card>
       ) : (
@@ -648,221 +512,6 @@ export function AttendeesManager({
           </div>
         </>
       )}
-
-      {/* Add Ticket Dialog */}
-      <Dialog open={addTicketOpen} onOpenChange={setAddTicketOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Ticket</DialogTitle>
-            <DialogDescription>
-              Record a manual sale or comp. The ticket can be delivered by email and/or SMS.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {addTicketError && (
-              <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
-                {addTicketError}
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="addticket-tier">Tier *</Label>
-              <Select value={addTicketForm.tier_id} onValueChange={handleTierChange}>
-                <SelectTrigger id="addticket-tier" className="w-full">
-                  <SelectValue placeholder="Select a tier" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tiers.map((tier) => (
-                    <SelectItem key={tier.id} value={tier.id}>
-                      {tier.name} ({formatPrice(tier.price_cents)})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div className="col-span-2 space-y-2">
-                <Label htmlFor="addticket-name">Name *</Label>
-                <Input
-                  id="addticket-name"
-                  value={addTicketForm.attendee_name}
-                  onChange={(e) =>
-                    setAddTicketForm({ ...addTicketForm, attendee_name: e.target.value })
-                  }
-                  placeholder="Jane Smith"
-                  maxLength={500}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="addticket-quantity">Quantity</Label>
-                <Input
-                  id="addticket-quantity"
-                  type="number"
-                  min={1}
-                  value={addTicketForm.quantity}
-                  onChange={(e) => handleQuantityChange(parseInt(e.target.value, 10) || 1)}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2">
-                <Label htmlFor="addticket-email">Email</Label>
-                <Input
-                  id="addticket-email"
-                  type="email"
-                  value={addTicketForm.attendee_email}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setAddTicketForm((f) => ({
-                      ...f,
-                      attendee_email: next,
-                      deliver_email: next && !f.attendee_email ? true : f.deliver_email,
-                    }));
-                  }}
-                  placeholder="jane@example.com"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="addticket-phone">Phone</Label>
-                <Input
-                  id="addticket-phone"
-                  type="tel"
-                  value={addTicketForm.attendee_phone}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setAddTicketForm((f) => ({
-                      ...f,
-                      attendee_phone: next,
-                      deliver_sms: next && !f.attendee_phone ? true : f.deliver_sms,
-                    }));
-                  }}
-                  placeholder="(555) 123-4567"
-                  maxLength={30}
-                />
-              </div>
-            </div>
-
-            <div className="rounded-md border p-3 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <Label htmlFor="addticket-comp" className="cursor-pointer">
-                  Comp this ticket
-                </Label>
-                <Switch
-                  id="addticket-comp"
-                  checked={compIsActive}
-                  onCheckedChange={toggleComp}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="addticket-amount" className="text-xs">Amount paid ($)</Label>
-                  <Input
-                    id="addticket-amount"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={addTicketForm.amount_dollars}
-                    onChange={(e) =>
-                      setAddTicketForm({ ...addTicketForm, amount_dollars: e.target.value })
-                    }
-                    disabled={compIsActive}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="addticket-method" className="text-xs">Payment method</Label>
-                  <Select
-                    value={addTicketForm.payment_method}
-                    onValueChange={(val) =>
-                      setAddTicketForm({ ...addTicketForm, payment_method: val as PaymentMethod })
-                    }
-                  >
-                    <SelectTrigger id="addticket-method" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAYMENT_METHODS.map((m) => (
-                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="addticket-note" className="text-xs">Payment note (optional)</Label>
-                <Input
-                  id="addticket-note"
-                  value={addTicketForm.payment_note}
-                  onChange={(e) =>
-                    setAddTicketForm({ ...addTicketForm, payment_note: e.target.value })
-                  }
-                  placeholder="@venmo-handle / check #1234 / comp from John"
-                  maxLength={500}
-                />
-              </div>
-            </div>
-
-            <div className="rounded-md border p-3 space-y-2">
-              <p className="text-sm font-medium">Deliver ticket via</p>
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 cursor-pointer text-sm">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-stone-300"
-                    checked={addTicketForm.deliver_email}
-                    disabled={!addTicketForm.attendee_email}
-                    onChange={(e) =>
-                      setAddTicketForm({ ...addTicketForm, deliver_email: e.target.checked })
-                    }
-                  />
-                  Email
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer text-sm">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-stone-300"
-                    checked={addTicketForm.deliver_sms}
-                    disabled={!addTicketForm.attendee_phone}
-                    onChange={(e) =>
-                      setAddTicketForm({ ...addTicketForm, deliver_sms: e.target.checked })
-                    }
-                  />
-                  SMS
-                </label>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Leave both off to record the ticket silently — you can send it later from the attendee&rsquo;s row.
-              </p>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setAddTicketOpen(false)}
-              disabled={addTicketPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAddTicketSave}
-              disabled={
-                addTicketPending ||
-                !addTicketForm.tier_id ||
-                !addTicketForm.attendee_name.trim() ||
-                (!addTicketForm.attendee_email && !addTicketForm.attendee_phone)
-              }
-            >
-              {addTicketPending ? 'Creating…' : 'Create Ticket'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Resend Tickets Dialog */}
       <Dialog open={resendTicket !== null} onOpenChange={(o) => !o && closeResend()}>

@@ -14,7 +14,14 @@ import {
   MessageSquare,
   Repeat2,
   CalendarHeart,
+  Ticket,
 } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -55,11 +62,17 @@ import type { ContactInput, InvitationScope, InvitationResult, SaveTheDateScope,
 import type { ContactWithMaster, CsvImport, InvitationChannel } from '@/types/database';
 import { formatDate } from '@/lib/utils';
 import { AddFromMasterSheet } from './add-from-master-sheet';
+import {
+  CreateTicketDialog,
+  type CreateTicketPrefill,
+  type CreateTicketTier,
+} from './create-ticket-dialog';
 
 interface ContactsManagerProps {
   contacts: ContactWithMaster[];
   csvImports: CsvImport[];
   eventId: string;
+  tiers: CreateTicketTier[];
   priorEvents: { id: string; title: string }[];
   pastContributors: string[];
 }
@@ -104,6 +117,7 @@ export function ContactsManager({
   contacts,
   csvImports,
   eventId,
+  tiers,
   priorEvents,
   pastContributors,
 }: ContactsManagerProps) {
@@ -128,6 +142,12 @@ export function ContactsManager({
   const [stdScope, setStdScope] = useState<SaveTheDateScope>('uninvited');
   const [stdSending, setStdSending] = useState(false);
   const [stdResult, setStdResult] = useState<SaveTheDateResult | null>(null);
+
+  // Create Ticket dialog state — prefilled with the clicked contact's
+  // name/email/phone so admins can comp a ticket or record a Venmo/cash
+  // sale without retyping. Opens via the per-row Ticket icon button.
+  const [createTicketOpen, setCreateTicketOpen] = useState(false);
+  const [createTicketPrefill, setCreateTicketPrefill] = useState<CreateTicketPrefill | null>(null);
 
   // Channel reassignment dialog state
   const [channelDialogOpen, setChannelDialogOpen] = useState(false);
@@ -209,6 +229,16 @@ export function ContactsManager({
 
     setContactDialogOpen(false);
     router.refresh();
+  }
+
+  function openCreateTicket(contact: ContactWithMaster) {
+    const m = contact.master_contacts;
+    setCreateTicketPrefill({
+      name: `${m.first_name} ${m.last_name}`.trim() || m.email,
+      email: m.email,
+      phone: m.phone ?? '',
+    });
+    setCreateTicketOpen(true);
   }
 
   async function handleDelete(contactId: string) {
@@ -359,6 +389,7 @@ export function ContactsManager({
   }
 
   return (
+    <TooltipProvider>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -512,10 +543,24 @@ export function ContactsManager({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openCreateTicket(contact)}
+                                aria-label="Create ticket for this contact"
+                              >
+                                <Ticket className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Create ticket</TooltipContent>
+                          </Tooltip>
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => openEdit(contact)}
+                            aria-label="Edit contact"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -524,6 +569,7 @@ export function ContactsManager({
                             size="sm"
                             disabled={isPending}
                             onClick={() => handleDelete(contact.id)}
+                            aria-label="Remove contact from event"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -969,6 +1015,16 @@ export function ContactsManager({
         </DialogContent>
       </Dialog>
 
+      <CreateTicketDialog
+        key={createTicketPrefill?.email ?? 'closed'}
+        eventId={eventId}
+        tiers={tiers}
+        open={createTicketOpen}
+        prefill={createTicketPrefill}
+        onOpenChange={setCreateTicketOpen}
+        onCreated={() => router.refresh()}
+      />
     </div>
+    </TooltipProvider>
   );
 }

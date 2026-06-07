@@ -48,6 +48,14 @@ export default async function ContactsPage({ params }: ContactsPageProps) {
     .neq('id', id)
     .order('date_start', { ascending: false });
 
+  // Tiers feed the per-contact Create Ticket dialog (the Add Ticket flow
+  // moved here from the attendees tab, where it didn't pull its weight).
+  const { data: tiers } = await supabase
+    .from('ticket_tiers')
+    .select('id, name, price_cents, quantity_total, quantity_sold')
+    .eq('event_id', id)
+    .order('sort_order', { ascending: true });
+
   const pastContributors = await listContributors();
 
   return (
@@ -55,6 +63,7 @@ export default async function ContactsPage({ params }: ContactsPageProps) {
       contacts={contacts ?? []}
       csvImports={csvImports ?? []}
       eventId={event.id}
+      tiers={tiers ?? []}
       priorEvents={(priorEventsData ?? []).map((e) => ({
         id: e.id as string,
         title: e.title as string,
