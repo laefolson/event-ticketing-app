@@ -199,7 +199,9 @@ export function AttendeesManager({
 
   // Count preview for the Event Update dialog — same per-attendee
   // dedupe logic that the server action runs, so what the admin sees
-  // matches what gets sent.
+  // matches what gets sent. SMS preview only counts phones that have
+  // an event_updates consent record for this event (eventOptInPhones,
+  // derived from sms_consents). That mirrors the server-side gate.
   const updateCounts = useMemo(() => {
     const active = tickets.filter(
       (t) => t.status === 'confirmed' || t.status === 'checked_in'
@@ -216,10 +218,16 @@ export function AttendeesManager({
       }
       total++;
       if (updateChannelEmail && t.attendee_email) emailRecipients++;
-      if (updateChannelSms && t.attendee_phone) smsRecipients++;
+      if (
+        updateChannelSms &&
+        t.attendee_phone &&
+        hasConsent(t.attendee_phone, eventOptInPhones)
+      ) {
+        smsRecipients++;
+      }
     }
     return { total, emailRecipients, smsRecipients };
-  }, [tickets, updateChannelEmail, updateChannelSms]);
+  }, [tickets, updateChannelEmail, updateChannelSms, eventOptInPhones]);
 
   function openUpdateDialog() {
     setUpdateSubject('');
@@ -261,6 +269,7 @@ export function AttendeesManager({
         sent: 0,
         failed: 0,
         skipped: 0,
+        skippedNoOptIn: 0,
         recipients: 0,
         failedDetails: [res.error ?? 'Failed to send updates'],
       });
@@ -733,6 +742,11 @@ export function AttendeesManager({
                       {updateResult.skipped} skipped (no matching channel)
                     </p>
                   )}
+                  {updateResult.skippedNoOptIn > 0 && (
+                    <p className="text-muted-foreground">
+                      {updateResult.skippedNoOptIn} SMS skipped — recipient hasn&rsquo;t opted in to event updates
+                    </p>
+                  )}
                   {updateResult.failed > 0 && (
                     <p className="text-red-700 dark:text-red-300">
                       {updateResult.failed} failed
@@ -815,6 +829,11 @@ export function AttendeesManager({
                     Up to {updateCounts.smsRecipients} SMS
                   </span>
                 </div>
+                {updateChannelSms && (
+                  <p className="text-xs text-muted-foreground">
+                    SMS goes only to attendees who opted in to event-update texts at checkout.
+                  </p>
+                )}
               </div>
 
               <DialogFooter>

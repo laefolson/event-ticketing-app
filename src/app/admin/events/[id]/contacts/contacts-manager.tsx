@@ -340,11 +340,15 @@ export function ContactsManager({
         (c.invitation_channel === 'email' || c.invitation_channel === 'both') &&
         c.master_contacts.email
     ).length;
+    // SMS preview honors the master sms_opt_in_event_updates flag —
+    // contacts who haven't opted in won't be texted even if their
+    // per-event channel allows it.
     const smsCount = target.filter(
       (c) =>
         reminderChannelSms &&
         (c.invitation_channel === 'sms' || c.invitation_channel === 'both') &&
-        c.master_contacts.phone
+        c.master_contacts.phone &&
+        c.master_contacts.sms_opt_in_event_updates
     ).length;
     return { total: target.length, emailCount, smsCount };
   }, [
@@ -397,6 +401,7 @@ export function ContactsManager({
         sent: 0,
         failed: 0,
         skipped: 0,
+        skippedNoOptIn: 0,
         failedDetails: [result.error ?? 'Failed to send reminders'],
       });
     }
@@ -1156,6 +1161,11 @@ export function ContactsManager({
                       {reminderResult.skipped} skipped (already has a ticket, or channel mismatch)
                     </p>
                   )}
+                  {reminderResult.skippedNoOptIn > 0 && (
+                    <p className="text-muted-foreground">
+                      {reminderResult.skippedNoOptIn} SMS skipped — recipient hasn&rsquo;t opted in to event updates
+                    </p>
+                  )}
                   {reminderResult.failed > 0 && (
                     <p className="text-red-700 dark:text-red-300">
                       {reminderResult.failed} failed
@@ -1257,6 +1267,11 @@ export function ContactsManager({
                 {reminderScope === 'no_ticket' && (
                   <p className="text-xs text-muted-foreground">
                     Contacts who already have a confirmed ticket are excluded automatically.
+                  </p>
+                )}
+                {reminderChannelSms && (
+                  <p className="text-xs text-muted-foreground">
+                    SMS goes only to contacts who&rsquo;ve opted in to event-update texts.
                   </p>
                 )}
               </div>

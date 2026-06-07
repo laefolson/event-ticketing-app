@@ -1125,6 +1125,8 @@ export interface TicketReminderResult {
   sent: number;
   failed: number;
   skipped: number;
+  /** Contacts whose channel allowed SMS but who haven't opted in to event updates. */
+  skippedNoOptIn: number;
   failedDetails: string[];
 }
 
@@ -1201,7 +1203,7 @@ export async function sendTicketReminders(
     .from('contacts')
     .select(
       `id, invitation_channel,
-       master_contacts!inner(first_name, last_name, email, phone)`
+       master_contacts!inner(first_name, last_name, email, phone, sms_opt_in_event_updates)`
     )
     .eq('event_id', eventId)
     .neq('invitation_channel', 'none');
@@ -1230,6 +1232,7 @@ export async function sendTicketReminders(
   let sent = 0;
   let failed = 0;
   let skipped = 0;
+  let skippedNoOptIn = 0;
   const failedDetails: string[] = [];
 
   for (const contact of contacts) {
@@ -1240,6 +1243,7 @@ export async function sendTicketReminders(
     const last_name = master?.last_name ?? '';
     const email = (master?.email as string | null) ?? null;
     const phone = (master?.phone as string | null) ?? null;
+    const smsOptedIn = !!(master?.sms_opt_in_event_updates ?? false);
     const channel = contact.invitation_channel as InvitationChannel;
 
     // Skip no-ticket scope hits.
@@ -1260,10 +1264,15 @@ export async function sendTicketReminders(
       channels.email &&
       (channel === 'email' || channel === 'both') &&
       !!email;
-    const sendBySms =
-      channels.sms &&
-      (channel === 'sms' || channel === 'both') &&
-      !!phone;
+    // Honor the master SMS opt-in for event updates. This flag tracks
+    // the global consent state across all events — if it's false the
+    // contact has either never opted in or has since opted out.
+    // Per-event invitation_channel still applies on top of it.
+    const channelAllowsSms = (channel === 'sms' || channel === 'both') && !!phone;
+    if (channels.sms && channelAllowsSms && !smsOptedIn) {
+      skippedNoOptIn++;
+    }
+    const sendBySms = channels.sms && channelAllowsSms && smsOptedIn;
 
     if (!sendByEmail && !sendBySms) {
       skipped++;
@@ -1330,6 +1339,6 @@ export async function sendTicketReminders(
 
   return {
     success: true,
-    data: { sent, failed, skipped, failedDetails },
+    data: { sent, failed, skipped, skippedNoOptIn, failedDetails },
   };
 }

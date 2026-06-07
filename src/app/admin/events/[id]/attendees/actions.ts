@@ -774,6 +774,8 @@ export interface EventUpdateResult {
   sent: number;
   failed: number;
   skipped: number;
+  /** Recipients whose phone wasn't on the event-updates opt-in list. */
+  skippedNoOptIn: number;
   recipients: number;
   failedDetails: string[];
 }
@@ -869,6 +871,24 @@ export async function sendEventUpdates(
   }
   const recipients = [...byEmail.values(), ...phoneOnly];
 
+  // Only send SMS to phones that have an event-updates consent record
+  // for this event. sms_consents is the legal log of the buyer's
+  // checkbox at checkout/RSVP — keying off it (not the master flag)
+  // means we honor the consent that was given for THIS event, even if
+  // the buyer later flipped their master preference. Phones are
+  // normalized to digits for matching so format differences don't
+  // cause silent skips.
+  const { data: smsConsents } = await service
+    .from('sms_consents')
+    .select('phone')
+    .eq('event_id', eventId)
+    .eq('consent_type', 'event_updates');
+  const optedInPhones = new Set(
+    (smsConsents ?? [])
+      .map((c) => ((c.phone as string | null) ?? '').replace(/\D/g, ''))
+      .filter(Boolean)
+  );
+
   const venueName = await getVenueName();
   const origin = getBaseUrl();
   const eventUrl = `${origin}/e/${event.slug}`;
@@ -878,13 +898,19 @@ export async function sendEventUpdates(
   let sent = 0;
   let failed = 0;
   let skipped = 0;
+  let skippedNoOptIn = 0;
   const failedDetails: string[] = [];
 
   for (const r of recipients) {
     const firstName = (r.name.split(/\s+/)[0] || 'Guest').trim();
 
     const willEmail = channels.email && !!r.email;
-    const willSms = channels.sms && !!r.phone;
+    const phoneDigits = r.phone ? r.phone.replace(/\D/g, '') : '';
+    const phoneOptedIn = !!phoneDigits && optedInPhones.has(phoneDigits);
+    const willSms = channels.sms && !!r.phone && phoneOptedIn;
+    if (channels.sms && r.phone && !phoneOptedIn) {
+      skippedNoOptIn++;
+    }
     if (!willEmail && !willSms) {
       skipped++;
       continue;
@@ -949,6 +975,13 @@ export async function sendEventUpdates(
 
   return {
     success: true,
-    data: { sent, failed, skipped, recipients: recipients.length, failedDetails },
+    data: {
+      sent,
+      failed,
+      skipped,
+      skippedNoOptIn,
+      recipients: recipients.length,
+      failedDetails,
+    },
   };
 }
