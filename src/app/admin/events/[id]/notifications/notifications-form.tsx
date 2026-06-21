@@ -99,6 +99,9 @@ export function NotificationsForm({ event }: { event: Event }) {
               onRemove={() => update('save_the_date_image_url', null)}
               contain
             />
+            <p className="text-muted-foreground text-xs">
+              Recommended: at least 1000 px wide. Any aspect ratio works — the image renders at its natural ratio (capped at ~500 px wide in email).
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -161,7 +164,7 @@ export function NotificationsForm({ event }: { event: Event }) {
               contain
             />
             <p className="text-muted-foreground text-xs">
-              Falls back to the event cover image if nothing is uploaded here.
+              Recommended: at least 1000 px wide. Any aspect ratio works — the image renders at its natural ratio (capped at ~500 px wide in email). Falls back to the event cover image if nothing is uploaded here.
             </p>
           </div>
 

@@ -762,6 +762,9 @@ export function NewEventWizard() {
                   onUpload={(url) => updateField('cover_image_url', url)}
                   onRemove={() => updateField('cover_image_url', null)}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Recommended: 1500×500 px (3:1 wide banner). Used on the public event hero and as the banner in event-update emails.
+                </p>
                 <label className="mt-2 flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
