@@ -41,7 +41,14 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
         Select your tickets and complete checkout.
       </p>
 
-      <CheckoutForm eventId={event.id} slug={slug} tiers={tiers} venueName={venueName} />
+      <CheckoutForm
+        eventId={event.id}
+        slug={slug}
+        tiers={tiers}
+        venueName={venueName}
+        eventTitle={event.title}
+        venmoEnabled={event.venmo_enabled}
+      />
     </div>
   );
 }

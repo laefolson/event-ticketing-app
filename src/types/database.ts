@@ -51,6 +51,8 @@ export interface Event {
   status: EventStatus;
   social_sharing_enabled: boolean;
   ticket_qr_enabled: boolean;
+  venmo_enabled: boolean;
+  venmo_handle: string;
   link_active: boolean;
   archived_at: string | null;
   created_by: string;

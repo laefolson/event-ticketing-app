@@ -85,6 +85,8 @@ interface FormData {
   invitation_after_image_text: string;
   invitation_sms_body: string;
   ticket_qr_enabled: boolean;
+  venmo_enabled: boolean;
+  venmo_handle: string;
   video_url: string;
   tiers: TierFormData[];
   faq: FaqPair[];
@@ -154,6 +156,8 @@ export function NewEventWizard() {
     invitation_after_image_text: '',
     invitation_sms_body: '',
     ticket_qr_enabled: false,
+    venmo_enabled: false,
+    venmo_handle: '@Anne-Olson-24',
     video_url: '',
     tiers: [],
     faq: [],
@@ -416,6 +420,8 @@ export function NewEventWizard() {
         ? formData.faq.map((p) => ({ question: p.question.trim(), answer: p.answer.trim() }))
         : undefined,
       ticket_qr_enabled: formData.ticket_qr_enabled,
+      venmo_enabled: formData.venmo_enabled,
+      venmo_handle: formData.venmo_handle.trim() || '@Anne-Olson-24',
       publish,
     });
 
@@ -819,6 +825,35 @@ export function NewEventWizard() {
                   checked={formData.ticket_qr_enabled}
                   onCheckedChange={(checked) => updateField('ticket_qr_enabled', checked)}
                 />
+              </div>
+
+              {/* Venmo Payments */}
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="venmo_enabled">Enable Venmo payments</Label>
+                    <p className="text-muted-foreground text-sm">
+                      Offer guests a Pay with Venmo option at checkout. Tickets
+                      stay pending until you confirm payment in Attendees.
+                    </p>
+                  </div>
+                  <Switch
+                    id="venmo_enabled"
+                    checked={formData.venmo_enabled}
+                    onCheckedChange={(checked) => updateField('venmo_enabled', checked)}
+                  />
+                </div>
+                {formData.venmo_enabled && (
+                  <div className="space-y-2">
+                    <Label htmlFor="venmo_handle">Venmo handle</Label>
+                    <Input
+                      id="venmo_handle"
+                      value={formData.venmo_handle}
+                      onChange={(e) => updateField('venmo_handle', e.target.value)}
+                      placeholder="@Anne-Olson-24"
+                    />
+                  </div>
+                )}
               </div>
 
               {error && <p className="text-sm text-destructive">{error}</p>}

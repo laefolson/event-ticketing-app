@@ -45,6 +45,8 @@ const updateEventSchema = z
     video_url: z.string().max(500).nullable().optional(),
     social_sharing_enabled: z.boolean(),
     ticket_qr_enabled: z.boolean(),
+    venmo_enabled: z.boolean().optional(),
+    venmo_handle: z.string().max(100).optional(),
     publish: z.boolean(),
   })
   .superRefine((data, ctx) => {
@@ -88,6 +90,8 @@ export type UpdateEventInput = {
   video_url?: string | null;
   social_sharing_enabled: boolean;
   ticket_qr_enabled: boolean;
+  venmo_enabled?: boolean;
+  venmo_handle?: string;
   publish: boolean;
 };
 

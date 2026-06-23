@@ -8,6 +8,7 @@ import { sendEmail } from '@/lib/resend';
 import { sendSms, toMmsImageUrl } from '@/lib/twilio';
 import { TicketConfirmationEmail } from '@/emails/ticket-confirmation-email';
 import { EventUpdateEmail } from '@/emails/event-update-email';
+import { OrderCancelledEmail } from '@/emails/order-cancelled-email';
 import { syncMasterContactFromCheckout } from '@/lib/checkout-master-sync';
 import { getVenueName } from '@/lib/settings';
 import { formatDate, formatCents, getBaseUrl, generateTicketCode } from '@/lib/utils';
@@ -992,4 +993,230 @@ export async function sendEventUpdates(
       failedDetails,
     },
   };
+}
+
+// ── Venmo pending-order actions ─────────────────────────────────────────
+
+const venmoOrderSchema = z.object({
+  sessionId: z.string().min(1, 'sessionId is required'),
+  eventId: z.string().uuid('Invalid eventId'),
+});
+
+export type VenmoOrderInput = z.infer<typeof venmoOrderSchema>;
+
+export async function confirmVenmoOrder(
+  input: VenmoOrderInput
+): Promise<ActionResponse<{ ticketsConfirmed: number }>> {
+  const parsed = venmoOrderSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
+  }
+  const { sessionId, eventId } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'You must be logged in.' };
+  }
+
+  const service = createServiceClient();
+
+  const { data: pendingTickets, error: fetchError } = await service
+    .from('tickets')
+    .select('id, tier_id, quantity, attendee_name, attendee_email, attendee_phone, event_id, ticket_code, amount_paid_cents')
+    .eq('stripe_session_id', sessionId)
+    .eq('event_id', eventId)
+    .eq('payment_method', 'venmo')
+    .eq('status', 'pending');
+
+  if (fetchError) {
+    return { success: false, error: fetchError.message };
+  }
+  if (!pendingTickets || pendingTickets.length === 0) {
+    return { success: false, error: 'No pending Venmo tickets for this order.' };
+  }
+
+  for (const ticket of pendingTickets) {
+    const { error: updateError } = await service
+      .from('tickets')
+      .update({ status: 'confirmed' })
+      .eq('id', ticket.id);
+
+    if (updateError) {
+      console.error(`confirmVenmoOrder: failed to update ticket ${ticket.id}:`, updateError.message);
+      continue;
+    }
+
+    const { error: tierError } = await service.rpc('adjust_quantity_sold', {
+      p_tier_id: ticket.tier_id,
+      p_delta: ticket.quantity,
+    });
+    if (tierError) {
+      console.error(`confirmVenmoOrder: failed to increment quantity_sold for tier ${ticket.tier_id}:`, tierError.message);
+    }
+  }
+
+  // Send confirmation email (one for the whole order). Mirrors the Stripe
+  // webhook's post-confirm send.
+  const firstTicket = pendingTickets[0];
+  if (firstTicket.attendee_email) {
+    const tierIds = [...new Set(pendingTickets.map((t) => t.tier_id))];
+    const { data: tiersData } = await service
+      .from('ticket_tiers')
+      .select('id, name')
+      .in('id', tierIds);
+    const tierNameMap = new Map((tiersData ?? []).map((t) => [t.id, t.name]));
+
+    const { data: eventData } = await service
+      .from('events')
+      .select('title, slug, date_start, location_name, ticket_qr_enabled, cover_image_url')
+      .eq('id', eventId)
+      .single();
+
+    if (eventData) {
+      const venueName = await getVenueName();
+      const dateFormatted = formatDate(eventData.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
+      const ticketQrEnabled = !!eventData.ticket_qr_enabled;
+      const baseUrl = getBaseUrl();
+
+      const ticketLines = await Promise.all(
+        pendingTickets.map(async (t) => {
+          const line: { tierName: string; quantity: number; ticketCode: string; qrDataUrl?: string } = {
+            tierName: tierNameMap.get(t.tier_id) ?? 'Ticket',
+            quantity: t.quantity,
+            ticketCode: t.ticket_code,
+          };
+          if (ticketQrEnabled) {
+            line.qrDataUrl = await generateQrDataUrl(
+              `${baseUrl}/e/${eventData.slug}/verify/${t.ticket_code}`
+            );
+          }
+          return line;
+        })
+      );
+
+      const amountTotal = pendingTickets.reduce(
+        (sum, t) => sum + (t.amount_paid_cents ?? 0),
+        0
+      );
+
+      const emailResult = await sendEmail({
+        to: firstTicket.attendee_email,
+        subject: `Tickets Confirmed: ${eventData.title}`,
+        react: TicketConfirmationEmail({
+          attendeeName: firstTicket.attendee_name,
+          eventTitle: eventData.title,
+          dateFormatted,
+          locationName: eventData.location_name,
+          tickets: ticketLines,
+          amountPaidFormatted: formatCents(amountTotal),
+          venueName,
+          bannerText: eventData.location_name ?? venueName,
+          ticketQrEnabled,
+          coverImageUrl: eventData.cover_image_url,
+        }),
+      });
+
+      // Log to invitation_logs keyed to the contacts join row so bounce
+      // tracking on attendees view picks this confirmation up too.
+      const buyerEmail = firstTicket.attendee_email.toLowerCase();
+      let contactIdForLog: string | null = null;
+      const { data: masterRow } = await service
+        .from('master_contacts')
+        .select('id')
+        .eq('email', buyerEmail)
+        .maybeSingle();
+      if (masterRow?.id) {
+        const { data: joinRow } = await service
+          .from('contacts')
+          .select('id')
+          .eq('event_id', eventId)
+          .eq('master_contact_id', masterRow.id)
+          .maybeSingle();
+        contactIdForLog = (joinRow?.id as string) ?? null;
+      }
+      await service.from('invitation_logs').insert({
+        event_id: eventId,
+        contact_id: contactIdForLog,
+        message_type: 'ticket_confirmation',
+        channel: 'email',
+        status: emailResult.success ? 'sent' : 'failed',
+        provider_message_id: emailResult.messageId ?? null,
+      });
+    }
+  }
+
+  return { success: true, data: { ticketsConfirmed: pendingTickets.length } };
+}
+
+export async function cancelVenmoOrder(
+  input: VenmoOrderInput
+): Promise<ActionResponse<{ ticketsCancelled: number }>> {
+  const parsed = venmoOrderSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
+  }
+  const { sessionId, eventId } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'You must be logged in.' };
+  }
+
+  const service = createServiceClient();
+
+  const { data: pendingTickets, error: fetchError } = await service
+    .from('tickets')
+    .select('id, attendee_name, attendee_email')
+    .eq('stripe_session_id', sessionId)
+    .eq('event_id', eventId)
+    .eq('payment_method', 'venmo')
+    .eq('status', 'pending');
+
+  if (fetchError) {
+    return { success: false, error: fetchError.message };
+  }
+  if (!pendingTickets || pendingTickets.length === 0) {
+    return { success: false, error: 'No pending Venmo tickets for this order.' };
+  }
+
+  const { error: updateError } = await service
+    .from('tickets')
+    .update({ status: 'cancelled' })
+    .in('id', pendingTickets.map((t) => t.id));
+
+  if (updateError) {
+    return { success: false, error: updateError.message };
+  }
+
+  const firstTicket = pendingTickets[0];
+  if (firstTicket.attendee_email) {
+    const { data: eventData } = await service
+      .from('events')
+      .select('title, date_start, location_name')
+      .eq('id', eventId)
+      .single();
+
+    if (eventData) {
+      const venueName = await getVenueName();
+      const dateFormatted = formatDate(eventData.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
+      await sendEmail({
+        to: firstTicket.attendee_email,
+        subject: `Order cancelled: ${eventData.title}`,
+        react: OrderCancelledEmail({
+          attendeeName: firstTicket.attendee_name,
+          eventTitle: eventData.title,
+          dateFormatted,
+          venueName,
+          bannerText: eventData.location_name ?? venueName,
+          reason: null,
+        }),
+      }).catch((err) => {
+        console.error('cancelVenmoOrder: failed to send cancellation email:', err);
+      });
+    }
+  }
+
+  return { success: true, data: { ticketsCancelled: pendingTickets.length } };
 }

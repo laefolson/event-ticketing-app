@@ -75,6 +75,8 @@ interface FormData {
   gallery_urls: string[];
   social_sharing_enabled: boolean;
   ticket_qr_enabled: boolean;
+  venmo_enabled: boolean;
+  venmo_handle: string;
   video_url: string;
 }
 
@@ -105,6 +107,8 @@ export function EditEventForm({ event }: EditEventFormProps) {
     gallery_urls: event.gallery_urls ?? [],
     social_sharing_enabled: event.social_sharing_enabled,
     ticket_qr_enabled: event.ticket_qr_enabled,
+    venmo_enabled: event.venmo_enabled,
+    venmo_handle: event.venmo_handle ?? '@Anne-Olson-24',
     video_url: event.video_url ?? '',
   });
   const [error, setError] = useState<string | null>(null);
@@ -188,6 +192,8 @@ export function EditEventForm({ event }: EditEventFormProps) {
       gallery_urls: formData.gallery_urls,
       social_sharing_enabled: formData.social_sharing_enabled,
       ticket_qr_enabled: formData.ticket_qr_enabled,
+      venmo_enabled: formData.venmo_enabled,
+      venmo_handle: formData.venmo_handle.trim() || '@Anne-Olson-24',
       video_url: formData.video_url.trim() || null,
       publish,
     });
@@ -544,6 +550,35 @@ export function EditEventForm({ event }: EditEventFormProps) {
                 checked={formData.ticket_qr_enabled}
                 onCheckedChange={(checked) => updateField('ticket_qr_enabled', checked)}
               />
+            </div>
+
+            {/* Venmo Payments */}
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="venmo_enabled">Enable Venmo payments</Label>
+                  <p className="text-muted-foreground text-sm">
+                    Offer guests a Pay with Venmo option at checkout. Tickets stay
+                    pending until you confirm payment in Attendees.
+                  </p>
+                </div>
+                <Switch
+                  id="venmo_enabled"
+                  checked={formData.venmo_enabled}
+                  onCheckedChange={(checked) => updateField('venmo_enabled', checked)}
+                />
+              </div>
+              {formData.venmo_enabled && (
+                <div className="space-y-2">
+                  <Label htmlFor="venmo_handle">Venmo handle</Label>
+                  <Input
+                    id="venmo_handle"
+                    value={formData.venmo_handle}
+                    onChange={(e) => updateField('venmo_handle', e.target.value)}
+                    placeholder="@Anne-Olson-24"
+                  />
+                </div>
+              )}
             </div>
 
             {error && (

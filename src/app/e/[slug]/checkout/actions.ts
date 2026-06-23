@@ -11,6 +11,7 @@ import { sendEmail } from '@/lib/resend';
 import { RsvpConfirmationEmail } from '@/emails/rsvp-confirmation-email';
 import { getVenueName } from '@/lib/settings';
 import { generateTicketCode, formatDate, getBaseUrl } from '@/lib/utils';
+import { syncMasterContactFromCheckout } from '@/lib/checkout-master-sync';
 import type { ActionResponse } from '@/types/actions';
 
 const checkoutSchema = z.object({
@@ -32,6 +33,7 @@ const checkoutSchema = z.object({
     .transform((v) => v || null),
   consent_event_updates: z.boolean(),
   consent_marketing: z.boolean(),
+  payment_method: z.enum(['stripe', 'venmo']).optional().default('stripe'),
 });
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
@@ -54,6 +56,7 @@ export async function createCheckoutSession(
     attendee_phone: rawAttendeePhone,
     consent_event_updates,
     consent_marketing,
+    payment_method,
   } = parsed.data;
   // Normalize once so the pending ticket, sms_consents row, and the
   // webhook's master sync all see the same canonical (xxx) xxx-xxxx value.
@@ -70,7 +73,7 @@ export async function createCheckoutSession(
   // Verify event exists, is published, and link is active
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, title, date_start, location_name, is_published, link_active')
+    .select('id, slug, title, date_start, location_name, is_published, link_active, venmo_enabled, venmo_handle')
     .eq('id', event_id)
     .eq('slug', slug)
     .eq('is_published', true)
@@ -79,6 +82,10 @@ export async function createCheckoutSession(
 
   if (eventError || !event) {
     return { success: false, error: 'Event not found or no longer available.' };
+  }
+
+  if (payment_method === 'venmo' && !event.venmo_enabled) {
+    return { success: false, error: 'Venmo payments are not enabled for this event.' };
   }
 
   // Fetch all selected tiers
@@ -172,6 +179,7 @@ export async function createCheckoutSession(
     status: 'pending' as const,
     stripe_payment_intent_id: null,
     stripe_session_id: null,
+    payment_method,
   }));
 
   const { data: tickets, error: insertError } = await serviceClient
@@ -187,7 +195,49 @@ export async function createCheckoutSession(
 
   let redirectUrl: string;
 
-  if (totalCents > 0) {
+  if (payment_method === 'venmo') {
+    // Venmo: tickets stay pending until the admin confirms payment in the
+    // Attendees view. We synthesize a session id (reusing stripe_session_id
+    // as the grouping key) so the pending page can look up the order, and we
+    // record the amount owed on each ticket up front. No confirmation email
+    // is sent here — that happens when the admin confirms payment.
+    const syntheticSessionId = `venmo_${randomUUID()}`;
+
+    const ticketAmountUpdates = items.map((item) => {
+      const tier = tierMap.get(item.tier_id)!;
+      return { tier_id: item.tier_id, amount: tier.price_cents * item.quantity };
+    });
+
+    for (const t of tickets) {
+      const update = ticketAmountUpdates.find((u) => u.tier_id === t.tier_id);
+      await serviceClient
+        .from('tickets')
+        .update({
+          stripe_session_id: syntheticSessionId,
+          amount_paid_cents: update?.amount ?? 0,
+        })
+        .eq('id', t.id);
+    }
+
+    // Master sync inline (Stripe path runs this in the webhook). Failures are
+    // logged but do not block creation of the pending order.
+    try {
+      await syncMasterContactFromCheckout(serviceClient, {
+        eventId: event_id,
+        email: attendee_email,
+        name: attendee_name,
+        phone: attendee_phone,
+        smsOptInEvent: consent_event_updates,
+        smsOptInMarketing: consent_marketing,
+        source: 'checkout',
+        addedBy: 'checkout',
+      });
+    } catch (err) {
+      console.error('Venmo pending order: master sync failed:', err);
+    }
+
+    redirectUrl = `${origin}/e/${slug}/venmo-pending?session_id=${syntheticSessionId}`;
+  } else if (totalCents > 0) {
     // Build Stripe line items
     const lineItems: import('stripe').Stripe.Checkout.SessionCreateParams.LineItem[] =
       items.map((item) => {

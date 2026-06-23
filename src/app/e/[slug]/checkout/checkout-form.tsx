@@ -17,9 +17,17 @@ interface CheckoutFormProps {
   slug: string;
   tiers: TicketTier[];
   venueName: string;
+  eventTitle: string;
+  venmoEnabled: boolean;
 }
 
-export function CheckoutForm({ eventId, slug, tiers, venueName }: CheckoutFormProps) {
+export function CheckoutForm({
+  eventId,
+  slug,
+  tiers,
+  venueName,
+  venmoEnabled,
+}: CheckoutFormProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
     const initial: Record<string, number> = {};
     for (const tier of tiers) {
@@ -32,6 +40,7 @@ export function CheckoutForm({ eventId, slug, tiers, venueName }: CheckoutFormPr
   const [phone, setPhone] = useState('');
   const [consentEventUpdates, setConsentEventUpdates] = useState(false);
   const [consentMarketing, setConsentMarketing] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'venmo'>('stripe');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -93,6 +102,7 @@ export function CheckoutForm({ eventId, slug, tiers, venueName }: CheckoutFormPr
       attendee_phone: phone,
       consent_event_updates: consentEventUpdates,
       consent_marketing: consentMarketing,
+      payment_method: isFreeOnly ? 'stripe' : paymentMethod,
     });
 
     if (!result.success) {
@@ -313,6 +323,43 @@ export function CheckoutForm({ eventId, slug, tiers, venueName }: CheckoutFormPr
         </div>
       )}
 
+      {/* Payment method selector — only when venmo enabled and order is paid */}
+      {venmoEnabled && hasSelection && !isFreeOnly && (
+        <div className="space-y-2">
+          <Label>Payment method</Label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setPaymentMethod('stripe')}
+              className={`rounded-lg border p-3 text-sm font-medium transition-colors ${
+                paymentMethod === 'stripe'
+                  ? 'border-primary bg-primary/5'
+                  : 'border-input hover:bg-muted/50'
+              }`}
+            >
+              Pay with Card
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaymentMethod('venmo')}
+              className={`rounded-lg border p-3 text-sm font-medium transition-colors ${
+                paymentMethod === 'venmo'
+                  ? 'border-primary bg-primary/5'
+                  : 'border-input hover:bg-muted/50'
+              }`}
+            >
+              Pay with Venmo
+            </button>
+          </div>
+          {paymentMethod === 'venmo' && (
+            <p className="text-muted-foreground text-xs">
+              Your tickets will be reserved and confirmed once we verify your
+              Venmo payment — typically within a few hours.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Error */}
       {error && <p className="text-destructive text-sm">{error}</p>}
 
@@ -326,10 +373,14 @@ export function CheckoutForm({ eventId, slug, tiers, venueName }: CheckoutFormPr
         {submitting
           ? isFreeOnly
             ? 'Completing RSVP...'
-            : 'Redirecting to payment...'
+            : paymentMethod === 'venmo'
+              ? 'Reserving tickets...'
+              : 'Redirecting to payment...'
           : isFreeOnly
             ? 'Complete RSVP'
-            : `Pay ${formatCents(totalCents)}`}
+            : paymentMethod === 'venmo'
+              ? `Reserve tickets · ${formatCents(totalCents)}`
+              : `Pay ${formatCents(totalCents)}`}
       </Button>
     </form>
   );

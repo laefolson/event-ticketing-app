@@ -54,6 +54,8 @@ const createEventSchema = z
     video_url: z.string().max(500).nullable().optional(),
     faq: z.array(faqPairSchema).optional(),
     ticket_qr_enabled: z.boolean().optional().default(false),
+    venmo_enabled: z.boolean().optional().default(false),
+    venmo_handle: z.string().max(100).optional(),
     publish: z.boolean(),
   })
   .superRefine((data, ctx) => {
@@ -103,6 +105,8 @@ export type CreateEventInput = {
   video_url?: string | null;
   faq?: Array<{ question: string; answer: string }>;
   ticket_qr_enabled?: boolean;
+  venmo_enabled?: boolean;
+  venmo_handle?: string;
   publish: boolean;
 };
 

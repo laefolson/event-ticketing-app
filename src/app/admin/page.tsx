@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
-import { CalendarDays, MapPin, ArrowRight, Plus } from 'lucide-react';
+import { CalendarDays, MapPin, ArrowRight, Plus, Clock } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { formatDate, formatCents } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
@@ -39,6 +39,7 @@ export default async function AdminDashboard() {
     { data: upcoming },
     { data: past },
     { data: ticketAgg },
+    { data: pendingVenmoRows },
   ] = await Promise.all([
     // Upcoming: future date, not archived
     supabase
@@ -62,7 +63,23 @@ export default async function AdminDashboard() {
       .from('tickets')
       .select('event_id, quantity, amount_paid_cents')
       .in('status', ['confirmed', 'checked_in']),
+
+    // Pending Venmo orders across all events — surface a stat card only
+    // if there's at least one waiting for the admin to confirm.
+    supabase
+      .from('tickets')
+      .select('event_id, stripe_session_id')
+      .eq('payment_method', 'venmo')
+      .eq('status', 'pending'),
   ]);
+
+  const pendingVenmoOrders = new Set(
+    (pendingVenmoRows ?? [])
+      .map((t) => (t.stripe_session_id as string | null) ?? '')
+      .filter(Boolean)
+  ).size;
+  const firstPendingEventId =
+    (pendingVenmoRows ?? [])[0]?.event_id as string | undefined;
 
   // Per-event metrics map
   const byEventId = new Map<string, { ticketsSold: number; revenue: number }>();
@@ -103,6 +120,33 @@ export default async function AdminDashboard() {
           Create Event
         </Link>
       </div>
+
+      {pendingVenmoOrders > 0 && (
+        <Link
+          href={
+            firstPendingEventId
+              ? `/admin/events/${firstPendingEventId}/attendees`
+              : '/admin/events'
+          }
+          className="block"
+        >
+          <Card className="border-amber-300 bg-amber-50/40 transition-colors hover:bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30">
+            <CardContent className="flex items-center gap-4 py-4">
+              <Clock className="h-5 w-5 shrink-0 text-amber-600" />
+              <div className="flex-1">
+                <p className="font-medium">
+                  {pendingVenmoOrders} pending Venmo payment
+                  {pendingVenmoOrders === 1 ? '' : 's'}
+                </p>
+                <p className="text-muted-foreground text-sm">
+                  Confirm payment to send tickets, or cancel the order.
+                </p>
+              </div>
+              <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       <EventsSection
         heading="Upcoming Events"

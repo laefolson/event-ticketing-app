@@ -16,7 +16,7 @@ export default async function AttendeesPage({ params }: AttendeesPageProps) {
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, title')
+    .select('id, title, venmo_enabled, venmo_handle')
     .eq('id', id)
     .single();
 
@@ -29,6 +29,17 @@ export default async function AttendeesPage({ params }: AttendeesPageProps) {
     .select('*, ticket_tiers(id, name, price_cents)')
     .eq('event_id', id)
     .in('status', ['confirmed', 'checked_in', 'refunded'])
+    .order('purchased_at', { ascending: false });
+
+  // Pending Venmo orders are listed in their own panel above the main
+  // attendees table — the admin needs to confirm or cancel each one once
+  // payment is verified.
+  const { data: pendingVenmoTickets } = await supabase
+    .from('tickets')
+    .select('*, ticket_tiers(id, name, price_cents)')
+    .eq('event_id', id)
+    .eq('payment_method', 'venmo')
+    .eq('status', 'pending')
     .order('purchased_at', { ascending: false });
 
   // RLS on sms_consents is service-role-only, so use service client
@@ -83,7 +94,9 @@ export default async function AttendeesPage({ params }: AttendeesPageProps) {
   return (
     <AttendeesManager
       tickets={tickets ?? []}
+      pendingVenmoTickets={pendingVenmoTickets ?? []}
       eventId={event.id}
+      venmoHandle={event.venmo_handle ?? '@Anne-Olson-24'}
       smsConsents={smsConsents ?? []}
       bounceByEmail={bounceByEmail}
     />

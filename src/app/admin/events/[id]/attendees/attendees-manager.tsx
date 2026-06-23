@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { ScanDialog } from './scan-dialog';
+import { PendingVenmoPanel } from './pending-venmo-panel';
 import { toggleCheckIn, resendTickets, sendEventUpdates } from './actions';
 import type {
   EventUpdateScope,
@@ -76,7 +77,9 @@ interface SmsConsent {
 
 interface AttendeesManagerProps {
   tickets: TicketWithTier[];
+  pendingVenmoTickets: TicketWithTier[];
   eventId: string;
+  venmoHandle: string;
   smsConsents: SmsConsent[];
   bounceByEmail: Record<string, { status: string; error_code: string | null }>;
 }
@@ -94,7 +97,9 @@ function escapeCsvValue(value: string): string {
 
 export function AttendeesManager({
   tickets,
+  pendingVenmoTickets,
   eventId,
+  venmoHandle,
   smsConsents,
   bounceByEmail,
 }: AttendeesManagerProps) {
@@ -481,6 +486,14 @@ export function AttendeesManager({
           </Button>
         </div>
       </div>
+
+      {/* Pending Venmo orders — separate panel above the main counter so
+          the admin can confirm or cancel each order without scrolling. */}
+      <PendingVenmoPanel
+        tickets={pendingVenmoTickets}
+        eventId={eventId}
+        venmoHandle={venmoHandle}
+      />
 
       {/* Counter card */}
       <Card>
