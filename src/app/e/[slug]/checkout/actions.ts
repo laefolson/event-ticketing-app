@@ -12,6 +12,7 @@ import { RsvpConfirmationEmail } from '@/emails/rsvp-confirmation-email';
 import { getVenueName } from '@/lib/settings';
 import { generateTicketCode, formatDate, getBaseUrl } from '@/lib/utils';
 import { syncMasterContactFromCheckout } from '@/lib/checkout-master-sync';
+import { computeServiceFeeCents } from '@/lib/service-fee';
 import type { ActionResponse } from '@/types/actions';
 
 const checkoutSchema = z.object({
@@ -73,7 +74,7 @@ export async function createCheckoutSession(
   // Verify event exists, is published, and link is active
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, title, date_start, location_name, is_published, link_active, venmo_enabled, venmo_handle')
+    .select('id, slug, title, date_start, location_name, is_published, link_active, venmo_enabled, venmo_handle, pass_service_fee')
     .eq('id', event_id)
     .eq('slug', slug)
     .eq('is_published', true)
@@ -159,14 +160,25 @@ export async function createCheckoutSession(
     }
   }
 
-  // Calculate total
-  const totalCents = items.reduce((sum, item) => {
+  // Calculate subtotal (ticket lines only). Service fee is computed
+  // below — only on the Stripe path, only when the admin enabled
+  // pass_service_fee on the event, and never on free orders.
+  const subtotalCents = items.reduce((sum, item) => {
     const tier = tierMap.get(item.tier_id)!;
     return sum + tier.price_cents * item.quantity;
   }, 0);
 
-  // Insert one ticket per item
-  const ticketInserts = items.map((item) => ({
+  const serviceFeeCents =
+    payment_method === 'stripe' && event.pass_service_fee && subtotalCents > 0
+      ? computeServiceFeeCents(subtotalCents)
+      : 0;
+  const totalCents = subtotalCents + serviceFeeCents;
+
+  // Insert one ticket per item. service_fee_cents is recorded on the
+  // first ticket only — fee is per-transaction, not per-ticket — so
+  // summing service_fee_cents across an event gives total fee revenue
+  // without double-counting.
+  const ticketInserts = items.map((item, idx) => ({
     event_id,
     tier_id: item.tier_id,
     contact_id: null,
@@ -176,6 +188,7 @@ export async function createCheckoutSession(
     ticket_code: generateTicketCode(),
     quantity: item.quantity,
     amount_paid_cents: 0,
+    service_fee_cents: idx === 0 ? serviceFeeCents : 0,
     status: 'pending' as const,
     stripe_payment_intent_id: null,
     stripe_session_id: null,
@@ -254,6 +267,17 @@ export async function createCheckoutSession(
           quantity: item.quantity,
         };
       });
+
+    if (serviceFeeCents > 0) {
+      lineItems.push({
+        price_data: {
+          currency: 'usd',
+          product_data: { name: 'Service Fee' },
+          unit_amount: serviceFeeCents,
+        },
+        quantity: 1,
+      });
+    }
 
     let session;
     try {

@@ -16,6 +16,11 @@ interface TicketConfirmationEmailProps {
   locationName: string | null;
   tickets: TicketLine[];
   amountPaidFormatted: string;
+  /** Optional itemized receipt. Pass these when the order carried a
+   *  service fee; the email then shows Subtotal / Service Fee / Total
+   *  instead of a single Amount Paid line. */
+  subtotalFormatted?: string;
+  serviceFeeFormatted?: string;
   venueName: string;
   bannerText?: string | null;
   ticketQrEnabled?: boolean;
@@ -29,11 +34,14 @@ export function TicketConfirmationEmail({
   locationName,
   tickets,
   amountPaidFormatted,
+  subtotalFormatted,
+  serviceFeeFormatted,
   venueName,
   bannerText,
   ticketQrEnabled,
   coverImageUrl,
 }: TicketConfirmationEmailProps) {
+  const showItemized = !!subtotalFormatted && !!serviceFeeFormatted;
   return (
     <BaseLayout
       preview={`Your tickets for ${eventTitle} are confirmed`}
@@ -93,8 +101,21 @@ export function TicketConfirmationEmail({
             {i < tickets.length - 1 && <Text style={detailLabel}>---</Text>}
           </React.Fragment>
         ))}
-        <Text style={detailLabel}>Amount Paid</Text>
-        <Text style={detailValue}>{amountPaidFormatted}</Text>
+        {showItemized ? (
+          <>
+            <Text style={detailLabel}>Subtotal</Text>
+            <Text style={detailValue}>{subtotalFormatted}</Text>
+            <Text style={detailLabel}>Service Fee</Text>
+            <Text style={detailValue}>{serviceFeeFormatted}</Text>
+            <Text style={detailLabel}>Total Paid</Text>
+            <Text style={detailValue}>{amountPaidFormatted}</Text>
+          </>
+        ) : (
+          <>
+            <Text style={detailLabel}>Amount Paid</Text>
+            <Text style={detailValue}>{amountPaidFormatted}</Text>
+          </>
+        )}
       </Section>
       <Text style={paragraph}>
         Please save your ticket code{tickets.length > 1 ? 's' : ''}. You may need to present {tickets.length > 1 ? 'them' : 'it'} at the event.

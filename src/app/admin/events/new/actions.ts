@@ -56,6 +56,7 @@ const createEventSchema = z
     ticket_qr_enabled: z.boolean().optional().default(false),
     venmo_enabled: z.boolean().optional().default(false),
     venmo_handle: z.string().max(100).optional(),
+    pass_service_fee: z.boolean().optional().default(false),
     publish: z.boolean(),
   })
   .superRefine((data, ctx) => {
@@ -107,6 +108,7 @@ export type CreateEventInput = {
   ticket_qr_enabled?: boolean;
   venmo_enabled?: boolean;
   venmo_handle?: string;
+  pass_service_fee?: boolean;
   publish: boolean;
 };
 

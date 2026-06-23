@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Minus, Plus } from 'lucide-react';
 import { formatCents } from '@/lib/utils';
+import { computeServiceFeeCents } from '@/lib/service-fee';
 import { createCheckoutSession } from './actions';
 import type { TicketTier } from '@/types/database';
 
@@ -19,6 +20,7 @@ interface CheckoutFormProps {
   venueName: string;
   eventTitle: string;
   venmoEnabled: boolean;
+  passServiceFee: boolean;
 }
 
 export function CheckoutForm({
@@ -27,6 +29,7 @@ export function CheckoutForm({
   tiers,
   venueName,
   venmoEnabled,
+  passServiceFee,
 }: CheckoutFormProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
     const initial: Record<string, number> = {};
@@ -55,10 +58,16 @@ export function CheckoutForm({
       subtotal: t.price_cents * quantities[t.id],
     }));
 
-  const totalCents = selectedItems.reduce((sum, item) => sum + item.subtotal, 0);
+  const subtotalCents = selectedItems.reduce((sum, item) => sum + item.subtotal, 0);
   const totalQty = selectedItems.reduce((sum, item) => sum + item.qty, 0);
   const hasSelection = totalQty > 0;
-  const isFreeOnly = hasSelection && totalCents === 0;
+  const isFreeOnly = hasSelection && subtotalCents === 0;
+  // Fee only applies when admin enabled it AND the buyer chose card AND
+  // the order is paid. Venmo orders never pay the fee.
+  const feeApplies =
+    passServiceFee && !isFreeOnly && paymentMethod === 'stripe';
+  const serviceFeeCents = feeApplies ? computeServiceFeeCents(subtotalCents) : 0;
+  const totalCents = subtotalCents + serviceFeeCents;
 
   function setQty(tierId: string, qty: number) {
     setQuantities((prev) => ({ ...prev, [tierId]: qty }));
@@ -316,6 +325,12 @@ export function CheckoutForm({
               </span>
             </div>
           ))}
+          {feeApplies && serviceFeeCents > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Service Fee</span>
+              <span>{formatCents(serviceFeeCents)}</span>
+            </div>
+          )}
           <div className="border-border flex items-center justify-between border-t pt-2 text-sm font-bold">
             <span>Total</span>
             <span>{totalCents > 0 ? formatCents(totalCents) : 'Free'}</span>
@@ -337,7 +352,7 @@ export function CheckoutForm({
                   : 'border-input hover:bg-muted/50'
               }`}
             >
-              Pay with Card
+              {passServiceFee ? 'Pay with Card (+ service fee)' : 'Pay with Card'}
             </button>
             <button
               type="button"

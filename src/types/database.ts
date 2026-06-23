@@ -53,6 +53,7 @@ export interface Event {
   ticket_qr_enabled: boolean;
   venmo_enabled: boolean;
   venmo_handle: string;
+  pass_service_fee: boolean;
   link_active: boolean;
   archived_at: string | null;
   created_by: string;
@@ -127,6 +128,7 @@ export interface Ticket {
   stripe_payment_intent_id: string | null;
   stripe_session_id: string | null;
   amount_paid_cents: number;
+  service_fee_cents: number;
   payment_method: PaymentMethod;
   payment_note: string | null;
   status: TicketStatus;

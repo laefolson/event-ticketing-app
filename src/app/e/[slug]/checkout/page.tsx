@@ -48,6 +48,7 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
         venueName={venueName}
         eventTitle={event.title}
         venmoEnabled={event.venmo_enabled}
+        passServiceFee={event.pass_service_fee}
       />
     </div>
   );

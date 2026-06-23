@@ -87,6 +87,7 @@ interface FormData {
   ticket_qr_enabled: boolean;
   venmo_enabled: boolean;
   venmo_handle: string;
+  pass_service_fee: boolean;
   video_url: string;
   tiers: TierFormData[];
   faq: FaqPair[];
@@ -158,6 +159,7 @@ export function NewEventWizard() {
     ticket_qr_enabled: false,
     venmo_enabled: false,
     venmo_handle: '@Anne-Olson-24',
+    pass_service_fee: false,
     video_url: '',
     tiers: [],
     faq: [],
@@ -422,6 +424,7 @@ export function NewEventWizard() {
       ticket_qr_enabled: formData.ticket_qr_enabled,
       venmo_enabled: formData.venmo_enabled,
       venmo_handle: formData.venmo_handle.trim() || '@Anne-Olson-24',
+      pass_service_fee: formData.pass_service_fee,
       publish,
     });
 
@@ -854,6 +857,27 @@ export function NewEventWizard() {
                     />
                   </div>
                 )}
+              </div>
+
+              {/* Service Fee Pass-through */}
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="pass_service_fee">
+                    Pass credit card processing fee to guest
+                  </Label>
+                  <p className="text-muted-foreground text-sm">
+                    Adds a Service Fee line at card checkout (2.9% + $0.30,
+                    grossed-up) so the venue receives the full ticket price.
+                    Never applied to Venmo payments.
+                  </p>
+                </div>
+                <Switch
+                  id="pass_service_fee"
+                  checked={formData.pass_service_fee}
+                  onCheckedChange={(checked) =>
+                    updateField('pass_service_fee', checked)
+                  }
+                />
               </div>
 
               {error && <p className="text-sm text-destructive">{error}</p>}

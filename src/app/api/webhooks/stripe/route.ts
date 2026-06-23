@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       // Find all pending tickets for this session
       const { data: pendingTickets, error: fetchError } = await supabase
         .from('tickets')
-        .select('id, status, tier_id, quantity, attendee_name, attendee_email, attendee_phone, event_id, ticket_code')
+        .select('id, status, tier_id, quantity, attendee_name, attendee_email, attendee_phone, event_id, ticket_code, service_fee_cents')
         .eq('stripe_session_id', sessionId)
         .eq('status', 'pending');
 
@@ -142,6 +142,11 @@ export async function POST(request: NextRequest) {
           const venueName = await getVenueName();
           const dateFormatted = formatDate(eventData.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
           const amountTotal = session.amount_total ?? 0;
+          const serviceFeeCents = pendingTickets.reduce(
+            (sum, t) => sum + ((t.service_fee_cents as number | null) ?? 0),
+            0
+          );
+          const subtotalCents = Math.max(0, amountTotal - serviceFeeCents);
 
           const ticketQrEnabled = !!(eventData.ticket_qr_enabled);
           const baseUrl = getBaseUrl();
@@ -172,6 +177,8 @@ export async function POST(request: NextRequest) {
               locationName: eventData.location_name,
               tickets: ticketLines,
               amountPaidFormatted: formatCents(amountTotal),
+              subtotalFormatted: serviceFeeCents > 0 ? formatCents(subtotalCents) : undefined,
+              serviceFeeFormatted: serviceFeeCents > 0 ? formatCents(serviceFeeCents) : undefined,
               venueName,
               bannerText: eventData.location_name ?? venueName,
               ticketQrEnabled,

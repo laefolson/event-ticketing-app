@@ -575,7 +575,7 @@ export async function resendTickets(
   // with the same current attendee_email as the anchor.
   let bundleQuery = service
     .from('tickets')
-    .select('id, attendee_name, ticket_code, quantity, amount_paid_cents, tier_id, attendee_email, attendee_phone, contact_id')
+    .select('id, attendee_name, ticket_code, quantity, amount_paid_cents, service_fee_cents, tier_id, attendee_email, attendee_phone, contact_id')
     .eq('event_id', anchorTicket.event_id)
     .in('status', ['confirmed', 'checked_in']);
   if (currentEmail) {
@@ -661,10 +661,15 @@ export async function resendTickets(
   const ticketQrEnabled = !!event.ticket_qr_enabled;
   const baseUrl = getBaseUrl();
   const attendeeName = (bundle[0].attendee_name as string) ?? 'Guest';
-  const amountTotal = bundle.reduce(
+  const subtotalAmount = bundle.reduce(
     (sum, t) => sum + ((t.amount_paid_cents as number | null) ?? 0),
     0
   );
+  const serviceFeeAmount = bundle.reduce(
+    (sum, t) => sum + ((t.service_fee_cents as number | null) ?? 0),
+    0
+  );
+  const amountTotal = subtotalAmount + serviceFeeAmount;
 
   const result: ResendTicketsResult = {
     emailSent: false,
@@ -701,6 +706,8 @@ export async function resendTickets(
         locationName: event.location_name,
         tickets: ticketLines,
         amountPaidFormatted: formatCents(amountTotal),
+        subtotalFormatted: serviceFeeAmount > 0 ? formatCents(subtotalAmount) : undefined,
+        serviceFeeFormatted: serviceFeeAmount > 0 ? formatCents(serviceFeeAmount) : undefined,
         venueName,
         bannerText: event.location_name ?? venueName,
         ticketQrEnabled,

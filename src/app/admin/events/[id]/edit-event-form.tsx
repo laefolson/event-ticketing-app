@@ -77,6 +77,7 @@ interface FormData {
   ticket_qr_enabled: boolean;
   venmo_enabled: boolean;
   venmo_handle: string;
+  pass_service_fee: boolean;
   video_url: string;
 }
 
@@ -109,6 +110,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
     ticket_qr_enabled: event.ticket_qr_enabled,
     venmo_enabled: event.venmo_enabled,
     venmo_handle: event.venmo_handle ?? '@Anne-Olson-24',
+    pass_service_fee: event.pass_service_fee,
     video_url: event.video_url ?? '',
   });
   const [error, setError] = useState<string | null>(null);
@@ -194,6 +196,7 @@ export function EditEventForm({ event }: EditEventFormProps) {
       ticket_qr_enabled: formData.ticket_qr_enabled,
       venmo_enabled: formData.venmo_enabled,
       venmo_handle: formData.venmo_handle.trim() || '@Anne-Olson-24',
+      pass_service_fee: formData.pass_service_fee,
       video_url: formData.video_url.trim() || null,
       publish,
     });
@@ -579,6 +582,27 @@ export function EditEventForm({ event }: EditEventFormProps) {
                   />
                 </div>
               )}
+            </div>
+
+            {/* Service Fee Pass-through */}
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="pass_service_fee">
+                  Pass credit card processing fee to guest
+                </Label>
+                <p className="text-muted-foreground text-sm">
+                  Adds a Service Fee line at card checkout (2.9% + $0.30,
+                  grossed-up) so the venue receives the full ticket price.
+                  Never applied to Venmo payments.
+                </p>
+              </div>
+              <Switch
+                id="pass_service_fee"
+                checked={formData.pass_service_fee}
+                onCheckedChange={(checked) =>
+                  updateField('pass_service_fee', checked)
+                }
+              />
             </div>
 
             {error && (
