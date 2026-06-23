@@ -327,7 +327,7 @@ export function CheckoutForm({
           ))}
           {feeApplies && serviceFeeCents > 0 && (
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Service Fee</span>
+              <span className="text-muted-foreground">Card Surcharge</span>
               <span>{formatCents(serviceFeeCents)}</span>
             </div>
           )}
@@ -352,7 +352,7 @@ export function CheckoutForm({
                   : 'border-input hover:bg-muted/50'
               }`}
             >
-              {passServiceFee ? 'Pay with Card (+ service fee)' : 'Pay with Card'}
+              Pay with Card
             </button>
             <button
               type="button"
@@ -363,7 +363,7 @@ export function CheckoutForm({
                   : 'border-input hover:bg-muted/50'
               }`}
             >
-              Pay with Venmo
+              {passServiceFee ? 'Pay with Venmo (no surcharge)' : 'Pay with Venmo'}
             </button>
           </div>
           {paymentMethod === 'venmo' && (

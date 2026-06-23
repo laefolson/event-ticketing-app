@@ -105,7 +105,7 @@ export function TicketConfirmationEmail({
           <>
             <Text style={detailLabel}>Subtotal</Text>
             <Text style={detailValue}>{subtotalFormatted}</Text>
-            <Text style={detailLabel}>Service Fee</Text>
+            <Text style={detailLabel}>Card Surcharge</Text>
             <Text style={detailValue}>{serviceFeeFormatted}</Text>
             <Text style={detailLabel}>Total Paid</Text>
             <Text style={detailValue}>{amountPaidFormatted}</Text>

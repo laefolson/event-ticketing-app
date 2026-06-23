@@ -866,7 +866,7 @@ export function NewEventWizard() {
                     Pass credit card processing fee to guest
                   </Label>
                   <p className="text-muted-foreground text-sm">
-                    Adds a Service Fee line at card checkout (2.9% + $0.30,
+                    Adds a Card Surcharge line at card checkout (2.9% + $0.30,
                     grossed-up) so the venue receives the full ticket price.
                     Never applied to Venmo payments.
                   </p>
