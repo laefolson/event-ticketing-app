@@ -424,17 +424,22 @@ export function AttendeesManager({
     });
   }
 
-  // Bundle size = every confirmed/checked-in ticket in this event with
-  // the same current attendee_email. The dialog shows this so the admin
-  // knows a multi-ticket purchase will get one resend with all codes.
+  // Bundle size = the SUM of quantity across every confirmed/checked-in
+  // ticket row in this event with the same current attendee_email. Each
+  // tier in a single purchase is one row, so a row with quantity=4 must
+  // count as 4 (counting rows would say "1 ticket" for a 4-ticket order
+  // of one tier, or always "2 tickets" for a typical 1-GA-plus-1-VIP).
   const resendBundleSize = useMemo(() => {
     if (!resendTicket || !resendTicket.attendee_email) return 1;
     const email = resendTicket.attendee_email.toLowerCase();
-    return tickets.filter(
-      (t) =>
-        (t.status === 'confirmed' || t.status === 'checked_in') &&
-        (t.attendee_email ?? '').toLowerCase() === email
-    ).length || 1;
+    const total = tickets
+      .filter(
+        (t) =>
+          (t.status === 'confirmed' || t.status === 'checked_in') &&
+          (t.attendee_email ?? '').toLowerCase() === email
+      )
+      .reduce((sum, t) => sum + (t.quantity ?? 0), 0);
+    return total || 1;
   }, [resendTicket, tickets]);
 
   // Check-in toggle handler

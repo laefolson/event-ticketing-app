@@ -671,11 +671,18 @@ export async function resendTickets(
   );
   const amountTotal = subtotalAmount + serviceFeeAmount;
 
+  // Total ticket count = sum of quantity across bundle rows, not the
+  // row count. One tier-line is one row; a 4-ticket purchase of one
+  // tier is a single row with quantity=4.
+  const bundleTicketCount = bundle.reduce(
+    (sum, t) => sum + ((t.quantity as number | null) ?? 0),
+    0
+  );
   const result: ResendTicketsResult = {
     emailSent: false,
     smsSent: false,
     ticketsUpdated,
-    bundleSize: bundle.length,
+    bundleSize: bundleTicketCount,
   };
   const errors: string[] = [];
 
@@ -735,9 +742,9 @@ export async function resendTickets(
     const firstCode = codes[0];
     const verifyUrl = `${baseUrl}/e/${event.slug}/verify/${firstCode}`;
     const body =
-      bundle.length === 1
+      bundleTicketCount === 1
         ? `Your ticket for ${event.title} on ${shortDate}: ${firstCode}. View: ${verifyUrl}`
-        : `Your ${bundle.length} tickets for ${event.title} on ${shortDate}. Codes: ${codes.join(', ')}. View: ${verifyUrl}`;
+        : `Your ${bundleTicketCount} tickets for ${event.title} on ${shortDate}. Codes: ${codes.join(', ')}. View: ${verifyUrl}`;
 
     const smsResult = await sendSms({ to: newPhone, body });
     result.smsSent = smsResult.success;
