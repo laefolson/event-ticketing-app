@@ -176,8 +176,20 @@ export default async function EventPage({ params }: EventPageProps) {
 
   const isFreeEvent = tiers.length === 0 || tiers.every((t) => t.price_cents === 0);
   const allSoldOut = tiers.length > 0 && tiers.every((t) => t.quantity_sold >= t.quantity_total);
-  const ctaHref = isFreeEvent ? `/e/${slug}/rsvp` : `/e/${slug}/checkout`;
-  const ctaLabel = allSoldOut ? 'Sold Out' : isFreeEvent ? 'RSVP Now' : 'Get Tickets';
+  const showWaitlist = allSoldOut && event.waitlist_enabled;
+  const ctaHref = showWaitlist
+    ? `/e/${slug}/waitlist`
+    : isFreeEvent
+      ? `/e/${slug}/rsvp`
+      : `/e/${slug}/checkout`;
+  const ctaLabel = showWaitlist
+    ? 'Join the Waitlist'
+    : allSoldOut
+      ? 'Sold Out'
+      : isFreeEvent
+        ? 'RSVP Now'
+        : 'Get Tickets';
+  const ctaDisabled = allSoldOut && !showWaitlist;
   const priceRange = getPriceRange(tiers);
 
   return (
@@ -288,6 +300,18 @@ export default async function EventPage({ params }: EventPageProps) {
         {tiers.length > 0 && (
           <section className="border-b py-8">
             <h2 className="mb-4 text-xl font-semibold">Tickets</h2>
+            {showWaitlist && (
+              <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50/40 p-4 text-sm dark:border-amber-700 dark:bg-amber-950/30">
+                <p className="font-medium">This event is sold out.</p>
+                <p className="text-muted-foreground mt-1">
+                  Join the waitlist below and we&apos;ll contact you if
+                  additional tickets become available.
+                </p>
+                <Button asChild className="mt-3">
+                  <Link href={`/e/${slug}/waitlist`}>Join the Waitlist</Link>
+                </Button>
+              </div>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               {tiers.map((tier) => {
                 const soldOut = tier.quantity_sold >= tier.quantity_total;
@@ -445,8 +469,8 @@ export default async function EventPage({ params }: EventPageProps) {
             <p className="truncate text-sm font-medium">{event.title}</p>
             <p className="text-muted-foreground text-xs">{priceRange}</p>
           </div>
-          <Button asChild={!allSoldOut} disabled={allSoldOut} size="lg">
-            {allSoldOut ? (
+          <Button asChild={!ctaDisabled} disabled={ctaDisabled} size="lg">
+            {ctaDisabled ? (
               ctaLabel
             ) : (
               <Link href={ctaHref}>{ctaLabel}</Link>

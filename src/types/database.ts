@@ -13,7 +13,18 @@ export type MessageType =
   | 'ticket_resend'
   | 'ticket_confirmation'
   | 'ticket_reminder'
-  | 'event_update';
+  | 'event_update'
+  | 'waitlist_custom';
+
+export type TicketSource = 'public' | 'waitlist';
+
+export type WaitlistStatus =
+  | 'waiting'
+  | 'offered'
+  | 'purchased'
+  | 'expired'
+  | 'declined'
+  | 'skipped';
 export type MessageChannel = 'email' | 'sms';
 export type MessageStatus = 'sent' | 'delivered' | 'failed' | 'bounced';
 export type ContactSource = 'manual' | 'csv_import' | 'google_sheets' | 'checkout' | 'rsvp';
@@ -54,6 +65,8 @@ export interface Event {
   venmo_enabled: boolean;
   venmo_handle: string;
   pass_service_fee: boolean;
+  waitlist_enabled: boolean;
+  waitlist_hold_hours: number;
   link_active: boolean;
   archived_at: string | null;
   created_by: string;
@@ -132,8 +145,25 @@ export interface Ticket {
   payment_method: PaymentMethod;
   payment_note: string | null;
   status: TicketStatus;
+  source: TicketSource;
   checked_in_at: string | null;
   purchased_at: string;
+}
+
+export interface WaitlistEntry {
+  id: string;
+  event_id: string;
+  master_contact_id: string;
+  position: number;
+  tickets_requested: number;
+  tickets_offered: number | null;
+  tier_id: string | null;
+  status: WaitlistStatus;
+  offer_token: string | null;
+  offer_expires_at: string | null;
+  offered_at: string | null;
+  purchased_at: string | null;
+  created_at: string;
 }
 
 export interface TeamMember {

@@ -245,7 +245,7 @@ export function AttendeesManager({
   function handleExportCsv() {
     const headers = [
       'Name', 'Email', 'Phone', 'Tier', 'Qty', 'Amount Paid', 'Payment Method', 'Payment Note',
-      'Status', 'Purchased', 'SMS Event Opt-In', 'SMS Marketing Opt-In',
+      'Source', 'Status', 'Purchased', 'SMS Event Opt-In', 'SMS Marketing Opt-In',
     ];
     const rows = tickets.map((t) => [
       escapeCsvValue(t.attendee_name),
@@ -256,6 +256,7 @@ export function AttendeesManager({
       formatPrice(t.amount_paid_cents),
       escapeCsvValue(paymentMethodLabel(t.payment_method)),
       escapeCsvValue(t.payment_note ?? ''),
+      t.source === 'waitlist' ? 'Waitlist' : 'Public',
       t.status === 'checked_in' ? 'Checked In' : t.status === 'refunded' ? 'Refunded' : 'Confirmed',
       formatDate(t.purchased_at, 'yyyy-MM-dd'),
       hasConsent(t.attendee_phone, eventOptInPhones) ? 'Yes' : 'No',

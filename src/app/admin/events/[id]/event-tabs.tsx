@@ -15,6 +15,7 @@ const tabs = [
   { label: 'Notifications', href: '/notifications' },
   { label: 'Contacts', href: '/contacts' },
   { label: 'Attendees', href: '/attendees' },
+  { label: 'Waitlist', href: '/waitlist' },
   { label: 'Post-Event', href: '/post-event' },
 ];
 

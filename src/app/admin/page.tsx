@@ -28,6 +28,8 @@ interface EventRow {
   location_name: string | null;
   status: EventStatus;
   ticketsSold: number;
+  publicTicketsSold: number;
+  waitlistTicketsSold: number;
   revenue: number;
 }
 
@@ -61,7 +63,7 @@ export default async function AdminDashboard() {
     // All confirmed/checked_in tickets — we'll group per event below.
     supabase
       .from('tickets')
-      .select('event_id, quantity, amount_paid_cents')
+      .select('event_id, quantity, amount_paid_cents, source')
       .in('status', ['confirmed', 'checked_in']),
 
     // Pending Venmo orders across all events — surface a stat card only
@@ -81,25 +83,41 @@ export default async function AdminDashboard() {
   const firstPendingEventId =
     (pendingVenmoRows ?? [])[0]?.event_id as string | undefined;
 
-  // Per-event metrics map
-  const byEventId = new Map<string, { ticketsSold: number; revenue: number }>();
+  // Per-event metrics map. Split public vs waitlist counts so the
+  // dashboard can surface waitlist sales separately when present.
+  const byEventId = new Map<
+    string,
+    { publicTicketsSold: number; waitlistTicketsSold: number; revenue: number }
+  >();
   for (const t of ticketAgg ?? []) {
-    const existing = byEventId.get(t.event_id) ?? { ticketsSold: 0, revenue: 0 };
-    existing.ticketsSold += t.quantity ?? 0;
+    const existing = byEventId.get(t.event_id) ?? {
+      publicTicketsSold: 0,
+      waitlistTicketsSold: 0,
+      revenue: 0,
+    };
+    if ((t.source as string | null) === 'waitlist') {
+      existing.waitlistTicketsSold += t.quantity ?? 0;
+    } else {
+      existing.publicTicketsSold += t.quantity ?? 0;
+    }
     existing.revenue += t.amount_paid_cents ?? 0;
     byEventId.set(t.event_id, existing);
   }
 
   function enrich(events: typeof upcoming): EventRow[] {
     return (events ?? []).map((e) => {
-      const m = byEventId.get(e.id) ?? { ticketsSold: 0, revenue: 0 };
+      const m =
+        byEventId.get(e.id) ??
+        { publicTicketsSold: 0, waitlistTicketsSold: 0, revenue: 0 };
       return {
         id: e.id,
         title: e.title,
         date_start: e.date_start,
         location_name: e.location_name,
         status: e.status,
-        ticketsSold: m.ticketsSold,
+        ticketsSold: m.publicTicketsSold + m.waitlistTicketsSold,
+        publicTicketsSold: m.publicTicketsSold,
+        waitlistTicketsSold: m.waitlistTicketsSold,
         revenue: m.revenue,
       };
     });
@@ -215,6 +233,11 @@ function EventsSection({
                   <span className="font-medium">
                     {event.ticketsSold} {event.ticketsSold === 1 ? 'ticket' : 'tickets'}
                   </span>
+                  {event.waitlistTicketsSold > 0 && (
+                    <span className="text-muted-foreground text-xs">
+                      {event.publicTicketsSold} public · {event.waitlistTicketsSold} waitlist
+                    </span>
+                  )}
                   <span className="text-muted-foreground">
                     {formatCents(event.revenue)}
                   </span>
