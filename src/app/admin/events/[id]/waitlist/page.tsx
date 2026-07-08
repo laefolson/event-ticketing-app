@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { expireStaleWaitlistOffers } from '@/lib/waitlist-expiry';
 import { WaitlistManager } from './waitlist-manager';
 
 interface WaitlistAdminPageProps {
@@ -18,6 +19,11 @@ export default async function WaitlistAdminPage({ params }: WaitlistAdminPagePro
     .eq('id', id)
     .single();
   if (eventError || !event) notFound();
+
+  // Flip any offers whose hold window lapsed to `expired` before we read the
+  // list, so stale `offered` rows show as Expired with the Re-offer action
+  // instead of staying stuck. Idempotent; safe to run on every load.
+  await expireStaleWaitlistOffers(id);
 
   const { data: tiers } = await supabase
     .from('ticket_tiers')
