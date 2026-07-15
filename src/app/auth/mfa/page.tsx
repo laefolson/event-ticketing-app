@@ -18,7 +18,7 @@ import {
   InputOTPSlot,
 } from '@/components/ui/input-otp';
 
-type MFAStep = 'loading' | 'enroll' | 'challenge';
+type MFAStep = 'loading' | 'enroll' | 'challenge' | 'error';
 
 function MFAForm() {
   const router = useRouter();
@@ -40,32 +40,46 @@ function MFAForm() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function checkMFAStatus() {
-    const { data: aalData, error: aalError } =
-      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    try {
+      const { data: aalData, error: aalError } =
+        await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
 
-    if (aalError) {
-      router.replace('/auth/login');
-      return;
-    }
+      if (aalError) {
+        router.replace('/auth/login');
+        return;
+      }
 
-    // Already at AAL2 — go to admin
-    if (aalData.currentLevel === 'aal2') {
-      router.replace(redirectTo);
-      return;
-    }
+      // Already at AAL2 — go to admin
+      if (aalData.currentLevel === 'aal2') {
+        router.replace(redirectTo);
+        return;
+      }
 
-    // Has a verified TOTP factor — show challenge
-    const { data: factorsData } = await supabase.auth.mfa.listFactors();
-    const totpFactors =
-      factorsData?.totp?.filter((f) => f.status === 'verified') ?? [];
+      // Has a verified TOTP factor — show challenge
+      const { data: factorsData, error: factorsError } =
+        await supabase.auth.mfa.listFactors();
 
-    if (totpFactors.length > 0) {
-      // Use first verified TOTP factor for challenge
-      setFactorId(totpFactors[0].id);
-      setStep('challenge');
-    } else {
-      // No verified TOTP factor — start enrollment
-      await startEnrollment();
+      if (factorsError) {
+        setError('Failed to load MFA status. Please try again.');
+        setStep('error');
+        return;
+      }
+
+      const totpFactors =
+        factorsData?.totp?.filter((f) => f.status === 'verified') ?? [];
+
+      if (totpFactors.length > 0) {
+        // Use first verified TOTP factor for challenge
+        setFactorId(totpFactors[0].id);
+        setStep('challenge');
+      } else {
+        // No verified TOTP factor — start enrollment
+        await startEnrollment();
+      }
+    } catch {
+      // Never leave the user staring at the loading state — surface the failure.
+      setError('Something went wrong while checking authentication.');
+      setStep('error');
     }
   }
 
@@ -76,7 +90,8 @@ function MFAForm() {
     });
 
     if (error || !data) {
-      setError('Failed to start MFA enrollment. Please try again.');
+      setError(error?.message ?? 'Failed to start MFA enrollment. Please try again.');
+      setStep('error');
       return;
     }
 
@@ -125,6 +140,41 @@ function MFAForm() {
           <p className="text-center text-muted-foreground">
             Checking authentication...
           </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (step === 'error') {
+    return (
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">Something went wrong</CardTitle>
+          <CardDescription>
+            We couldn&apos;t set up multi-factor authentication.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {error && (
+            <p className="text-sm text-destructive text-center">{error}</p>
+          )}
+          <Button
+            onClick={() => {
+              setError(null);
+              setStep('loading');
+              checkMFAStatus();
+            }}
+            className="w-full"
+          >
+            Try Again
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => router.replace('/auth/login')}
+            className="w-full"
+          >
+            Back to Login
+          </Button>
         </CardContent>
       </Card>
     );
