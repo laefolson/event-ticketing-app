@@ -219,8 +219,7 @@ export function PostEventManager({
             <div className="flex items-start gap-3 rounded-lg border p-3">
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
-                No reachable confirmed or checked-in attendees to send thank-you
-                messages to.
+                No reachable checked-in attendees to send thank-you messages to.
               </p>
             </div>
           )}
