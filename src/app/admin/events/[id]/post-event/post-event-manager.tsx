@@ -44,13 +44,17 @@ interface PostEventManagerProps {
     link_active: boolean;
     archived_at: string | null;
   };
-  eligibleTicketCount: number;
+  recipientCount: number;
+  emailCount: number;
+  smsCount: number;
   thankYouAlreadySent: boolean;
 }
 
 export function PostEventManager({
   event,
-  eligibleTicketCount,
+  recipientCount,
+  emailCount,
+  smsCount,
   thankYouAlreadySent,
 }: PostEventManagerProps) {
   const router = useRouter();
@@ -193,8 +197,9 @@ export function PostEventManager({
             Thank-You Messages
           </CardTitle>
           <CardDescription>
-            Send thank-you messages to {eligibleTicketCount} confirmed/checked-in
-            attendee{eligibleTicketCount !== 1 ? 's' : ''}
+            Send thank-you messages to {recipientCount} recipient
+            {recipientCount !== 1 ? 's' : ''}
+            {recipientCount > 0 && ` (${emailCount} email, ${smsCount} SMS)`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -209,13 +214,13 @@ export function PostEventManager({
             </div>
           )}
 
-          {/* Zero attendees info */}
-          {eligibleTicketCount === 0 && (
+          {/* Zero recipients info */}
+          {recipientCount === 0 && (
             <div className="flex items-start gap-3 rounded-lg border p-3">
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
-                No confirmed or checked-in attendees to send thank-you messages
-                to.
+                No reachable confirmed or checked-in attendees to send thank-you
+                messages to.
               </p>
             </div>
           )}
@@ -249,7 +254,7 @@ export function PostEventManager({
             <Button
               onClick={handlePreview}
               disabled={
-                eligibleTicketCount === 0 || !emailBody.trim()
+                recipientCount === 0 || !emailBody.trim()
               }
             >
               Preview & Send
