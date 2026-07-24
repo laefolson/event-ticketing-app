@@ -148,7 +148,23 @@ export interface Ticket {
   source: TicketSource;
   checked_in_at: string | null;
   purchased_at: string;
+  cancelled_at: string | null;
+  cancellation_reason: string | null;
+  refunded_at: string | null;
+  refund_method: RefundMethod | null;
+  refund_amount_cents: number | null;
+  refund_note: string | null;
+  stripe_refund_id: string | null;
+  released_to_public: boolean;
 }
+
+/**
+ * Channel used to return money to a cancelled attendee. Decoupled from the
+ * original `payment_method` — a card purchase can be refunded via Venmo.
+ * Only `'stripe'` triggers an actual Stripe API refund; the rest are records
+ * of an out-of-band refund the admin handled manually.
+ */
+export type RefundMethod = 'stripe' | 'cash' | 'venmo' | 'paypal' | 'check' | 'other';
 
 export interface WaitlistEntry {
   id: string;

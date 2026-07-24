@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
+import { stripe } from '@/lib/stripe';
 import { isValidPhone, normalizePhone, PHONE_VALIDATION_MESSAGE } from '@/lib/phone';
 import { sendEmail } from '@/lib/resend';
 import { sendSms, toMmsImageUrl } from '@/lib/twilio';
@@ -14,7 +15,7 @@ import { getVenueName } from '@/lib/settings';
 import { formatDate, formatCents, getBaseUrl, generateTicketCode } from '@/lib/utils';
 import { generateQrDataUrl } from '@/lib/qr';
 import type { ActionResponse } from '@/types/actions';
-import type { PaymentMethod } from '@/types/database';
+import type { PaymentMethod, RefundMethod } from '@/types/database';
 
 const paymentMethodEnum = z.enum([
   'stripe', 'cash', 'venmo', 'paypal', 'check', 'comp', 'other',
@@ -1233,4 +1234,249 @@ export async function cancelVenmoOrder(
   }
 
   return { success: true, data: { ticketsCancelled: pendingTickets.length } };
+}
+
+// ── Cancel / Refund a confirmed ticket ──────────────────────────────────
+//
+// Removes an attendee from a confirmed/checked-in ticket. Two flavors:
+//   • intent 'cancel'  → status becomes 'cancelled' (no money moved)
+//   • intent 'refund'  → status becomes 'refunded'  (money returned)
+//
+// The refund CHANNEL is independent of how they originally paid: a card
+// purchase can be refunded via Venmo/cash/etc. Only refundMethod === 'stripe'
+// issues a real Stripe API refund (and needs a payment intent). Everything
+// else just records that the admin refunded them out-of-band.
+//
+// Inventory: by default we DON'T decrement quantity_sold, so a sold-out
+// event stays sold out and the freed seat is handed out from the waitlist.
+// Set releaseToPublic to put the seat back on general sale.
+
+const cancelTicketSchema = z
+  .object({
+    ticketId: z.string().uuid('Invalid ticket'),
+    intent: z.enum(['cancel', 'refund']),
+    refundMethod: z
+      .enum(['stripe', 'cash', 'venmo', 'paypal', 'check', 'other'])
+      .optional(),
+    refundAmountCents: z
+      .number()
+      .int()
+      .min(0, 'Refund amount must be 0 or more')
+      .max(100_000_00, 'Refund amount looks unreasonable')
+      .optional(),
+    refundNote: z.string().max(500).nullable().optional(),
+    reason: z.string().max(500).nullable().optional(),
+    releaseToPublic: z.boolean(),
+    notifyGuest: z.boolean(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.intent === 'refund') {
+      if (!data.refundMethod) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Pick a refund channel.',
+          path: ['refundMethod'],
+        });
+      }
+      if (data.refundAmountCents === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Refund amount is required.',
+          path: ['refundAmountCents'],
+        });
+      }
+    }
+  });
+
+export type CancelTicketInput = z.infer<typeof cancelTicketSchema>;
+
+export interface CancelTicketResult {
+  status: 'cancelled' | 'refunded';
+  stripeRefunded: boolean;
+  guestNotified: boolean;
+  releasedToPublic: boolean;
+}
+
+export async function cancelTicket(
+  input: CancelTicketInput
+): Promise<ActionResponse<CancelTicketResult>> {
+  const parsed = cancelTicketSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
+  }
+  const v = parsed.data;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'You must be logged in.' };
+  }
+
+  const service = createServiceClient();
+
+  const { data: ticket, error: fetchError } = await service
+    .from('tickets')
+    .select(
+      'id, event_id, tier_id, quantity, status, amount_paid_cents, stripe_payment_intent_id, payment_method, attendee_name, attendee_email'
+    )
+    .eq('id', v.ticketId)
+    .single();
+  if (fetchError || !ticket) {
+    return { success: false, error: 'Ticket not found.' };
+  }
+  if (ticket.status !== 'confirmed' && ticket.status !== 'checked_in') {
+    return {
+      success: false,
+      error: `Only confirmed or checked-in tickets can be cancelled (this one is ${ticket.status}).`,
+    };
+  }
+
+  const isRefund = v.intent === 'refund';
+  const refundMethod = (isRefund ? v.refundMethod : undefined) as RefundMethod | undefined;
+  const reason = v.reason?.trim() || null;
+  const refundNote = v.refundNote?.trim() || null;
+  const nowIso = new Date().toISOString();
+
+  // Build the DB patch first so we can commit BEFORE hitting Stripe. That
+  // guarantees the charge.refunded webhook (which fires from our own
+  // Stripe refund below) sees status='refunded' and no-ops — it won't
+  // double-decrement inventory. We roll the patch back if Stripe fails.
+  const prevStatus = ticket.status as 'confirmed' | 'checked_in';
+  const patch: Record<string, unknown> = {
+    cancelled_at: nowIso,
+    cancellation_reason: reason,
+  };
+  if (isRefund) {
+    patch.status = 'refunded';
+    patch.refunded_at = nowIso;
+    patch.refund_method = refundMethod;
+    patch.refund_amount_cents = v.refundAmountCents ?? 0;
+    patch.refund_note = refundNote;
+  } else {
+    patch.status = 'cancelled';
+  }
+  if (v.releaseToPublic) {
+    patch.released_to_public = true;
+  }
+
+  const { error: updateError } = await service
+    .from('tickets')
+    .update(patch)
+    .eq('id', ticket.id);
+  if (updateError) {
+    return { success: false, error: updateError.message };
+  }
+
+  // Issue the real Stripe refund only for the 'stripe' channel. On failure,
+  // roll the ticket back to its prior state so we never show a "refunded"
+  // ticket that never actually refunded.
+  let stripeRefunded = false;
+  if (isRefund && refundMethod === 'stripe') {
+    if (!ticket.stripe_payment_intent_id) {
+      await service
+        .from('tickets')
+        .update({
+          status: prevStatus,
+          cancelled_at: null,
+          cancellation_reason: null,
+          refunded_at: null,
+          refund_method: null,
+          refund_amount_cents: null,
+          refund_note: null,
+          released_to_public: false,
+        })
+        .eq('id', ticket.id);
+      return {
+        success: false,
+        error: 'No Stripe payment on this ticket — refund it via another channel.',
+      };
+    }
+    try {
+      const refund = await stripe.refunds.create({
+        payment_intent: ticket.stripe_payment_intent_id,
+        amount: v.refundAmountCents,
+      });
+      stripeRefunded = true;
+      await service
+        .from('tickets')
+        .update({ stripe_refund_id: refund.id })
+        .eq('id', ticket.id);
+    } catch (err) {
+      // Roll back — the refund didn't happen.
+      await service
+        .from('tickets')
+        .update({
+          status: prevStatus,
+          cancelled_at: null,
+          cancellation_reason: null,
+          refunded_at: null,
+          refund_method: null,
+          refund_amount_cents: null,
+          refund_note: null,
+          released_to_public: false,
+        })
+        .eq('id', ticket.id);
+      const message = err instanceof Error ? err.message : 'Stripe refund failed.';
+      return { success: false, error: `Stripe refund failed: ${message}` };
+    }
+  }
+
+  // Inventory. Only give the seat back to the public pool when explicitly
+  // asked; otherwise the tier stays sold out and the seat goes to the
+  // waitlist. Best-effort — the cancellation itself already succeeded.
+  if (v.releaseToPublic) {
+    const { error: tierError } = await service.rpc('adjust_quantity_sold', {
+      p_tier_id: ticket.tier_id,
+      p_delta: -ticket.quantity,
+    });
+    if (tierError) {
+      console.error(
+        `cancelTicket: failed to release inventory for tier ${ticket.tier_id}:`,
+        tierError.message
+      );
+    }
+  }
+
+  // Optionally email the guest a cancellation notice.
+  let guestNotified = false;
+  if (v.notifyGuest && ticket.attendee_email) {
+    const { data: event } = await service
+      .from('events')
+      .select('title, date_start, location_name')
+      .eq('id', ticket.event_id)
+      .single();
+    if (event) {
+      const venueName = await getVenueName();
+      const dateFormatted = formatDate(event.date_start, 'EEEE, MMMM d, yyyy · h:mm a');
+      const emailResult = await sendEmail({
+        to: ticket.attendee_email,
+        subject: `${isRefund ? 'Refund issued' : 'Ticket cancelled'}: ${event.title}`,
+        react: OrderCancelledEmail({
+          attendeeName: ticket.attendee_name,
+          eventTitle: event.title,
+          dateFormatted,
+          venueName,
+          bannerText: event.location_name ?? venueName,
+          reason,
+        }),
+      }).catch((err) => {
+        console.error('cancelTicket: failed to send notice:', err);
+        return { success: false } as const;
+      });
+      guestNotified = emailResult.success;
+    }
+  }
+
+  return {
+    success: true,
+    data: {
+      status: isRefund ? 'refunded' : 'cancelled',
+      stripeRefunded,
+      guestNotified,
+      releasedToPublic: v.releaseToPublic,
+    },
+  };
 }

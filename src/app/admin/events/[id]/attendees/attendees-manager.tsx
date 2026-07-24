@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, CheckCircle2, Undo2, Download, Check, Minus, AlertTriangle, Send, Megaphone, Mail, MessageSquare } from 'lucide-react';
+import { Search, CheckCircle2, Undo2, Download, Check, Minus, AlertTriangle, Send, Megaphone, Mail, MessageSquare, Ban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatPrice } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
@@ -35,12 +35,13 @@ import {
 import { toast } from 'sonner';
 import { ScanDialog } from './scan-dialog';
 import { PendingVenmoPanel } from './pending-venmo-panel';
-import { toggleCheckIn, resendTickets, sendEventUpdates } from './actions';
+import { toggleCheckIn, resendTickets, sendEventUpdates, cancelTicket } from './actions';
 import type {
   EventUpdateScope,
   EventUpdateChannelMode,
   EventUpdateResult,
 } from './actions';
+import type { RefundMethod } from '@/types/database';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -118,6 +119,28 @@ export function AttendeesManager({
   });
   const [resendPending, startResend] = useTransition();
 
+  // Cancel / Refund dialog state — opened from a row. `refundChannel` of
+  // 'none' means cancel-only (no money moved); any other value issues or
+  // records a refund. releaseToPublic defaults OFF so a sold-out event
+  // stays sold out and the seat is handed out from the waitlist instead.
+  const [cancelTarget, setCancelTarget] = useState<TicketWithTier | null>(null);
+  const [cancelForm, setCancelForm] = useState<{
+    refundChannel: 'none' | RefundMethod;
+    refundAmount: string;
+    refundNote: string;
+    reason: string;
+    releaseToPublic: boolean;
+    notifyGuest: boolean;
+  }>({
+    refundChannel: 'none',
+    refundAmount: '',
+    refundNote: '',
+    reason: '',
+    releaseToPublic: false,
+    notifyGuest: false,
+  });
+  const [cancelPending, startCancel] = useTransition();
+
   // Event Update dialog state — broadcasts a custom subject + body to
   // confirmed/checked-in ticket holders. Dedupes per email server-side
   // so a multi-ticket purchase gets one message, not one per ticket.
@@ -142,13 +165,13 @@ export function AttendeesManager({
   // Per-row check-in pending state
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
 
-  // Counter — uses quantity, not row count. Refunded tickets stay visible
-  // in the list but don't count toward expected attendance.
+  // Counter — uses quantity, not row count. Refunded/cancelled tickets stay
+  // visible in the list but don't count toward expected attendance.
   const { checkedInCount, expectedCount } = useMemo(() => {
     let checkedIn = 0;
     let expected = 0;
     for (const ticket of tickets) {
-      if (ticket.status === 'refunded') continue;
+      if (ticket.status === 'refunded' || ticket.status === 'cancelled') continue;
       expected += ticket.quantity;
       if (ticket.status === 'checked_in') {
         checkedIn += ticket.quantity;
@@ -257,7 +280,13 @@ export function AttendeesManager({
       escapeCsvValue(paymentMethodLabel(t.payment_method)),
       escapeCsvValue(t.payment_note ?? ''),
       t.source === 'waitlist' ? 'Waitlist' : 'Public',
-      t.status === 'checked_in' ? 'Checked In' : t.status === 'refunded' ? 'Refunded' : 'Confirmed',
+      t.status === 'checked_in'
+        ? 'Checked In'
+        : t.status === 'refunded'
+          ? 'Refunded'
+          : t.status === 'cancelled'
+            ? 'Cancelled'
+            : 'Confirmed',
       formatDate(t.purchased_at, 'yyyy-MM-dd'),
       hasConsent(t.attendee_phone, eventOptInPhones) ? 'Yes' : 'No',
       hasConsent(t.attendee_phone, marketingOptInPhones) ? 'Yes' : 'No',
@@ -442,6 +471,67 @@ export function AttendeesManager({
     return total || 1;
   }, [resendTicket, tickets]);
 
+  // Cancel / Refund handlers — prefill the refund amount with the full
+  // amount paid so the common case (full refund) is one click.
+  function openCancel(ticket: TicketWithTier) {
+    setCancelTarget(ticket);
+    setCancelForm({
+      refundChannel: 'none',
+      refundAmount: ((ticket.amount_paid_cents ?? 0) / 100).toFixed(2),
+      refundNote: '',
+      reason: '',
+      releaseToPublic: false,
+      notifyGuest: false,
+    });
+  }
+
+  function closeCancel() {
+    if (cancelPending) return;
+    setCancelTarget(null);
+  }
+
+  function handleCancelSubmit() {
+    if (!cancelTarget) return;
+    const isRefund = cancelForm.refundChannel !== 'none';
+    // Stripe refunds need a payment intent — guard client-side too.
+    if (
+      cancelForm.refundChannel === 'stripe' &&
+      !cancelTarget.stripe_payment_intent_id
+    ) {
+      toast.error('No Stripe payment on this ticket — refund via another channel.');
+      return;
+    }
+    const amountCents = Math.round(parseFloat(cancelForm.refundAmount || '0') * 100);
+    if (isRefund && (Number.isNaN(amountCents) || amountCents < 0)) {
+      toast.error('Enter a valid refund amount.');
+      return;
+    }
+    startCancel(async () => {
+      const res = await cancelTicket({
+        ticketId: cancelTarget.id,
+        intent: isRefund ? 'refund' : 'cancel',
+        refundMethod: isRefund ? (cancelForm.refundChannel as RefundMethod) : undefined,
+        refundAmountCents: isRefund ? amountCents : undefined,
+        refundNote: cancelForm.refundNote.trim() || null,
+        reason: cancelForm.reason.trim() || null,
+        releaseToPublic: cancelForm.releaseToPublic,
+        notifyGuest: cancelForm.notifyGuest,
+      });
+      if (!res.success) {
+        toast.error(res.error ?? 'Failed to cancel ticket');
+        return;
+      }
+      const { status, stripeRefunded, guestNotified, releasedToPublic } = res.data!;
+      const parts: string[] = [status === 'refunded' ? 'Ticket refunded' : 'Ticket cancelled'];
+      if (stripeRefunded) parts.push('Stripe refund issued');
+      if (guestNotified) parts.push('guest emailed');
+      parts.push(releasedToPublic ? 'seat returned to public sale' : 'seat held for waitlist');
+      toast.success(parts.join(' · '));
+      setCancelTarget(null);
+      router.refresh();
+    });
+  }
+
   // Check-in toggle handler
   async function handleToggle(ticketId: string, currentStatus: string) {
     const newStatus = currentStatus === 'checked_in' ? 'confirmed' : 'checked_in';
@@ -594,12 +684,14 @@ export function AttendeesManager({
                   filteredTickets.map((ticket) => {
                     const isCheckedIn = ticket.status === 'checked_in';
                     const isRefunded = ticket.status === 'refunded';
+                    const isCancelled = ticket.status === 'cancelled';
+                    const isInactive = isRefunded || isCancelled;
                     const isRowPending = pendingIds.has(ticket.id);
 
                     return (
-                      <TableRow key={ticket.id} className={isRefunded ? 'opacity-60' : undefined}>
+                      <TableRow key={ticket.id} className={isInactive ? 'opacity-60' : undefined}>
                         <TableCell className="w-10">
-                          {!isRefunded && (
+                          {!isInactive && (
                             <Checkbox
                               checked={effectiveSelectedTicketIds.has(ticket.id)}
                               onCheckedChange={() => toggleTicketSelection(ticket.id)}
@@ -683,16 +775,16 @@ export function AttendeesManager({
                         <TableCell>
                           <Badge
                             variant={
-                              isRefunded ? 'destructive'
+                              isInactive ? 'destructive'
                                 : isCheckedIn ? 'default'
                                   : 'secondary'
                             }
                           >
-                            {isRefunded ? 'Refunded' : isCheckedIn ? 'Checked In' : 'Confirmed'}
+                            {isRefunded ? 'Refunded' : isCancelled ? 'Cancelled' : isCheckedIn ? 'Checked In' : 'Confirmed'}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          {isRefunded ? (
+                          {isInactive ? (
                             <span className="text-xs text-muted-foreground">—</span>
                           ) : (
                             <div className="flex items-center justify-end gap-1">
@@ -711,6 +803,19 @@ export function AttendeesManager({
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>Resend tickets</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => openCancel(ticket)}
+                                    aria-label="Cancel or refund ticket"
+                                  >
+                                    <Ban className="h-3.5 w-3.5 text-destructive" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Cancel / refund</TooltipContent>
                               </Tooltip>
                               <Button
                                 variant={isCheckedIn ? 'ghost' : 'default'}
@@ -835,6 +940,172 @@ export function AttendeesManager({
               }
             >
               {resendPending ? 'Sending…' : 'Send'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel / Refund Dialog */}
+      <Dialog open={cancelTarget !== null} onOpenChange={(o) => !o && closeCancel()}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancel ticket</DialogTitle>
+            <DialogDescription>
+              {cancelTarget && (
+                <>
+                  Removing <strong>{cancelTarget.attendee_name}</strong> (
+                  {cancelTarget.quantity} ×{' '}
+                  {cancelTarget.ticket_tiers?.name ?? 'ticket'}
+                  {cancelTarget.payment_method === 'comp'
+                    ? ', comp'
+                    : `, paid ${formatPrice(cancelTarget.amount_paid_cents)} via ${paymentMethodLabel(
+                        cancelTarget.payment_method
+                      )}`}
+                  ) from the attendee list.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {cancelTarget && (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="cancel-refund-channel">Refund</Label>
+                <Select
+                  value={cancelForm.refundChannel}
+                  onValueChange={(v) =>
+                    setCancelForm((f) => ({ ...f, refundChannel: v as 'none' | RefundMethod }))
+                  }
+                >
+                  <SelectTrigger id="cancel-refund-channel" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No refund — cancel only</SelectItem>
+                    <SelectItem
+                      value="stripe"
+                      disabled={!cancelTarget.stripe_payment_intent_id}
+                    >
+                      Refund via Stripe (to original card)
+                      {!cancelTarget.stripe_payment_intent_id ? ' — no card on file' : ''}
+                    </SelectItem>
+                    <SelectItem value="venmo">Mark refunded via Venmo</SelectItem>
+                    <SelectItem value="cash">Mark refunded via cash</SelectItem>
+                    <SelectItem value="check">Mark refunded via check</SelectItem>
+                    <SelectItem value="paypal">Mark refunded via PayPal</SelectItem>
+                    <SelectItem value="other">Mark refunded — other</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {cancelForm.refundChannel === 'stripe'
+                    ? 'Issues a real refund through Stripe to the original card.'
+                    : cancelForm.refundChannel === 'none'
+                      ? 'Removes them from the list without moving any money.'
+                      : 'Records that you refunded them out-of-band — no card is charged.'}
+                </p>
+              </div>
+
+              {cancelForm.refundChannel !== 'none' && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cancel-refund-amount">Refund amount ($)</Label>
+                    <Input
+                      id="cancel-refund-amount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={cancelForm.refundAmount}
+                      onChange={(e) =>
+                        setCancelForm((f) => ({ ...f, refundAmount: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cancel-refund-note">
+                      Refund note{' '}
+                      <span className="text-muted-foreground font-normal">(optional)</span>
+                    </Label>
+                    <Input
+                      id="cancel-refund-note"
+                      value={cancelForm.refundNote}
+                      onChange={(e) =>
+                        setCancelForm((f) => ({ ...f, refundNote: e.target.value }))
+                      }
+                      placeholder="e.g. Venmo @their-handle, sent 7/23"
+                      maxLength={500}
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="rounded-md border p-3 space-y-3">
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id="cancel-release"
+                    checked={cancelForm.releaseToPublic}
+                    onCheckedChange={(v) =>
+                      setCancelForm((f) => ({ ...f, releaseToPublic: v === true }))
+                    }
+                  />
+                  <Label htmlFor="cancel-release" className="cursor-pointer text-sm font-normal leading-snug">
+                    Return this seat to public sale
+                    <span className="block text-xs text-muted-foreground">
+                      Leave off to stay sold out and offer the seat from your waitlist.
+                    </span>
+                  </Label>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id="cancel-notify"
+                    checked={cancelForm.notifyGuest}
+                    disabled={!cancelTarget.attendee_email}
+                    onCheckedChange={(v) =>
+                      setCancelForm((f) => ({ ...f, notifyGuest: v === true }))
+                    }
+                  />
+                  <Label htmlFor="cancel-notify" className="cursor-pointer text-sm font-normal leading-snug">
+                    Email the guest a cancellation notice
+                    {!cancelTarget.attendee_email && (
+                      <span className="block text-xs text-muted-foreground">
+                        No email on file.
+                      </span>
+                    )}
+                  </Label>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="cancel-reason">
+                  Reason{' '}
+                  <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <Textarea
+                  id="cancel-reason"
+                  rows={2}
+                  value={cancelForm.reason}
+                  onChange={(e) => setCancelForm((f) => ({ ...f, reason: e.target.value }))}
+                  placeholder="Internal note; included in the guest email if you send one."
+                  maxLength={500}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={closeCancel} disabled={cancelPending}>
+              Keep ticket
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleCancelSubmit}
+              disabled={cancelPending}
+            >
+              {cancelPending
+                ? 'Working…'
+                : cancelForm.refundChannel === 'none'
+                  ? 'Cancel ticket'
+                  : 'Cancel & refund'}
             </Button>
           </DialogFooter>
         </DialogContent>

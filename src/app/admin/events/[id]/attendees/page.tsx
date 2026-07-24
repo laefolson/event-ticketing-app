@@ -28,7 +28,7 @@ export default async function AttendeesPage({ params }: AttendeesPageProps) {
     .from('tickets')
     .select('*, ticket_tiers(id, name, price_cents)')
     .eq('event_id', id)
-    .in('status', ['confirmed', 'checked_in', 'refunded'])
+    .in('status', ['confirmed', 'checked_in', 'refunded', 'cancelled'])
     .order('purchased_at', { ascending: false });
 
   // Pending Venmo orders are listed in their own panel above the main
