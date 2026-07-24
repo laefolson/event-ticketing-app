@@ -35,10 +35,6 @@ function MFAForm() {
 
   const supabase = createClient();
 
-  useEffect(() => {
-    checkMFAStatus();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   async function checkMFAStatus() {
     try {
       const { data: aalData, error: aalError } =
@@ -132,6 +128,13 @@ function MFAForm() {
     // MFA verified — redirect to admin
     router.replace(redirectTo);
   }
+
+  useEffect(() => {
+    // checkMFAStatus only calls setState after awaits (post-network), the
+    // legitimate initialize-on-mount pattern — no synchronous cascading render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    checkMFAStatus();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (step === 'loading') {
     return (
