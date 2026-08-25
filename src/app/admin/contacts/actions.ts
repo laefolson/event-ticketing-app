@@ -15,7 +15,14 @@ import { normalizePhone, isValidPhone, PHONE_VALIDATION_MESSAGE } from '@/lib/ph
 const contactInputSchema = z.object({
   first_name: z.string().trim().min(1, 'First name is required').max(120),
   last_name: z.string().trim().max(120).default(''),
-  email: z.string().trim().toLowerCase().email('Valid email is required'),
+  // Optional: phone-only contacts carry no email. Still validated when given.
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email('Valid email is required')
+    .or(z.literal(''))
+    .transform((v) => v || null),
   phone: z
     .string()
     .trim()
@@ -469,7 +476,8 @@ export async function importMasterContacts(
 export interface SheetMapping {
   first_name: string;
   last_name: string;
-  email: string;
+  /** Optional — a phone-only sheet has no email column to map. */
+  email?: string;
   phone?: string;
   sms_opt_in?: string;
 }
@@ -484,7 +492,7 @@ const SHEET_SYNC_SETTING_KEY = 'google_sheets_sync';
 const sheetMappingSchema = z.object({
   first_name: z.string().min(1, 'First name column is required'),
   last_name: z.string().min(1, 'Last name column is required'),
-  email: z.string().min(1, 'Email column is required'),
+  email: z.string().optional(),
   phone: z.string().optional(),
   sms_opt_in: z.string().optional(),
 });

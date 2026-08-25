@@ -221,7 +221,7 @@ export function GoogleSheetsSyncDialog({ pastContributors }: GoogleSheetsSyncDia
 
             <MappingRow label="First name" required value={mapping.first_name} options={headerOptions} onChange={(v) => updateMapping('first_name', v)} />
             <MappingRow label="Last name" required value={mapping.last_name} options={headerOptions} onChange={(v) => updateMapping('last_name', v)} />
-            <MappingRow label="Email" required value={mapping.email} options={headerOptions} onChange={(v) => updateMapping('email', v)} />
+            <MappingRow label="Email" value={mapping.email ?? ''} options={headerOptions} onChange={(v) => updateMapping('email', v)} allowNone />
             <MappingRow label="Phone" value={mapping.phone ?? ''} options={headerOptions} onChange={(v) => updateMapping('phone', v)} allowNone />
             <MappingRow label="SMS opt-in" value={mapping.sms_opt_in ?? ''} options={headerOptions} onChange={(v) => updateMapping('sms_opt_in', v)} allowNone />
 

@@ -28,7 +28,8 @@ export interface RowOutcome {
   rowIndex: number;
   status: RowOutcomeStatus;
   masterContactId?: string;
-  email?: string;
+  /** Null for phone-only rows, which have no email to report. */
+  email?: string | null;
   reason?: string;
 }
 
@@ -61,6 +62,17 @@ function norm(s?: string | null): string {
   return (s ?? '').trim();
 }
 
+/**
+ * Identity key for a contact that has no email. Phone alone is NOT enough:
+ * production has 13 numbers shared by two or more contacts (couples and
+ * households on one mobile), so matching on phone alone would merge distinct
+ * people. Requiring the name too keeps those separate while still catching a
+ * re-import of the same list.
+ */
+function nameKey(first: string, last: string, phone: string): string {
+  return `${first.trim().toLowerCase()}|${last.trim().toLowerCase()}|${phone}`;
+}
+
 export interface ProcessOptions {
   source?: ContactSource;
   /** When true, validate + categorize but do not write inserts or updates. */
@@ -89,7 +101,8 @@ export async function processMasterContactsCsv(
 
   interface ValidRow {
     rowIndex: number;
-    email: string;
+    /** Null for phone-only rows. */
+    email: string | null;
     first_name: string;
     last_name: string;
     phone: string | null;
@@ -99,6 +112,9 @@ export async function processMasterContactsCsv(
 
   const valid: ValidRow[] = [];
   const seenEmails = new Set<string>();
+  // Phone-only rows have no email to dedup on, so they are keyed by
+  // name+phone instead. See nameKey() for why the name is part of the key.
+  const seenNamePhone = new Set<string>();
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
@@ -106,30 +122,48 @@ export async function processMasterContactsCsv(
 
     const first_name = norm(r.first_name);
     const last_name = norm(r.last_name);
-    const email = norm(r.email).toLowerCase();
+    const rawEmail = norm(r.email).toLowerCase();
     const phone = normalizePhone(r.phone);
 
-    if (!email) {
-      outcomes.push({ rowIndex: i, status: 'skipped', reason: 'Missing email' });
-      skippedDetails.push({ row: rowNum, reason: 'Missing email' });
+    // A row must be reachable somehow — matches the master_contacts_reachable
+    // CHECK constraint, so we reject here rather than letting the insert fail.
+    if (!rawEmail && !phone) {
+      outcomes.push({ rowIndex: i, status: 'skipped', reason: 'No email or phone' });
+      skippedDetails.push({ row: rowNum, reason: 'No email or phone' });
       continue;
     }
-    if (!EMAIL_RE.test(email)) {
-      outcomes.push({ rowIndex: i, status: 'skipped', email, reason: 'Invalid email' });
-      skippedDetails.push({ row: rowNum, reason: `Invalid email: ${email}` });
+    if (rawEmail && !EMAIL_RE.test(rawEmail)) {
+      outcomes.push({ rowIndex: i, status: 'skipped', email: rawEmail, reason: 'Invalid email' });
+      skippedDetails.push({ row: rowNum, reason: `Invalid email: ${rawEmail}` });
       continue;
     }
+    const email = rawEmail || null;
+
     if (!first_name) {
-      outcomes.push({ rowIndex: i, status: 'skipped', email, reason: 'Missing first name' });
+      outcomes.push({ rowIndex: i, status: 'skipped', ...(email ? { email } : {}), reason: 'Missing first name' });
       skippedDetails.push({ row: rowNum, reason: 'Missing first name' });
       continue;
     }
-    if (seenEmails.has(email)) {
-      outcomes.push({ rowIndex: i, status: 'skipped', email, reason: 'Duplicate email within CSV' });
-      skippedDetails.push({ row: rowNum, reason: `Duplicate email within CSV: ${email}` });
-      continue;
+
+    if (email) {
+      if (seenEmails.has(email)) {
+        outcomes.push({ rowIndex: i, status: 'skipped', email, reason: 'Duplicate email within CSV' });
+        skippedDetails.push({ row: rowNum, reason: `Duplicate email within CSV: ${email}` });
+        continue;
+      }
+      seenEmails.add(email);
+    } else {
+      const key = nameKey(first_name, last_name, phone!);
+      if (seenNamePhone.has(key)) {
+        outcomes.push({ rowIndex: i, status: 'skipped', reason: 'Duplicate name + phone within CSV' });
+        skippedDetails.push({
+          row: rowNum,
+          reason: `Duplicate name + phone within CSV: ${first_name} ${last_name} ${phone}`.trim(),
+        });
+        continue;
+      }
+      seenNamePhone.add(key);
     }
-    seenEmails.add(email);
 
     const generic = parseBoolish(r.sms_opt_in);
     const sms_event = generic ?? false;
@@ -144,22 +178,51 @@ export async function processMasterContactsCsv(
     return summarise(rows.length, outcomes, skippedDetails);
   }
 
-  const { data: existingData, error: fetchError } = await supabase
-    .from('master_contacts')
-    .select('id, email, first_name, last_name, phone, sms_opt_in_event_updates, sms_opt_in_marketing')
-    .in('email', valid.map((v) => v.email));
+  // Two lookups: by email for rows that have one, and by phone so a row
+  // without an email can still be matched to someone already on file.
+  const emails = valid.map((v) => v.email).filter((e): e is string => e !== null);
+  const phones = valid.map((v) => v.phone).filter((p): p is string => p !== null);
+  const select =
+    'id, email, first_name, last_name, phone, sms_opt_in_event_updates, sms_opt_in_marketing';
 
-  if (fetchError) {
-    throw new Error(`Failed to query master_contacts: ${fetchError.message}`);
+  const [byEmailRes, byPhoneRes] = await Promise.all([
+    emails.length
+      ? supabase.from('master_contacts').select(select).in('email', emails)
+      : Promise.resolve({ data: [], error: null }),
+    phones.length
+      ? supabase.from('master_contacts').select(select).in('phone', phones)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (byEmailRes.error) {
+    throw new Error(`Failed to query master_contacts: ${byEmailRes.error.message}`);
   }
-  const existingByEmail = new Map(
-    (existingData ?? []).map((r) => [r.email as string, r])
+  if (byPhoneRes.error) {
+    throw new Error(`Failed to query master_contacts: ${byPhoneRes.error.message}`);
+  }
+
+  type ExistingRow = NonNullable<typeof byEmailRes.data>[number];
+
+  const existingByEmail = new Map<string, ExistingRow>(
+    (byEmailRes.data ?? []).map((r) => [r.email as string, r])
   );
+  // Keyed on name+phone, not phone alone — see nameKey(). When two stored
+  // contacts somehow share a name and phone, the first one wins; that means
+  // an existing duplicate is reused rather than compounded.
+  const existingByNamePhone = new Map<string, ExistingRow>();
+  for (const r of byPhoneRes.data ?? []) {
+    const k = nameKey(
+      (r.first_name as string) ?? '',
+      (r.last_name as string) ?? '',
+      r.phone as string
+    );
+    if (!existingByNamePhone.has(k)) existingByNamePhone.set(k, r);
+  }
 
   interface Insertable {
     first_name: string;
     last_name: string;
-    email: string;
+    email: string | null;
     phone: string | null;
     sms_opt_in_event_updates: boolean;
     sms_opt_in_marketing: boolean;
@@ -168,20 +231,35 @@ export async function processMasterContactsCsv(
   }
 
   const toInsert: Insertable[] = [];
-  const insertMeta: Array<{ rowIndex: number; email: string }> = [];
+  const insertMeta: Array<{ rowIndex: number; key: string; email: string | null }> = [];
 
   interface UpdatePlan {
     id: string;
     rowIndex: number;
-    email: string;
+    email: string | null;
     fields: Partial<Insertable>;
   }
   const toUpdate: UpdatePlan[] = [];
   let optInEventPromoted = 0;
   let optInMarketingPromoted = 0;
+  // An existing contact may only be claimed once per batch, so two rows that
+  // resolve to the same person can't both update it.
+  const claimedIds = new Set<string>();
 
   for (const v of valid) {
-    const existing = existingByEmail.get(v.email);
+    // Email wins when present. Otherwise — and also when the email is new but
+    // the name+phone is already on file — fall back to the name+phone match so
+    // a phone-only list can be imported now and enriched with emails later.
+    let existing = v.email ? existingByEmail.get(v.email) : undefined;
+    if (!existing && v.phone) {
+      const candidate = existingByNamePhone.get(
+        nameKey(v.first_name, v.last_name, v.phone)
+      );
+      if (candidate && !claimedIds.has(candidate.id as string)) existing = candidate;
+    }
+    if (existing && claimedIds.has(existing.id as string)) existing = undefined;
+    if (existing) claimedIds.add(existing.id as string);
+
     if (!existing) {
       toInsert.push({
         first_name: v.first_name,
@@ -193,11 +271,19 @@ export async function processMasterContactsCsv(
         source,
         ...(contributorName ? { contributor_name: contributorName } : {}),
       });
-      insertMeta.push({ rowIndex: v.rowIndex, email: v.email });
+      insertMeta.push({
+        rowIndex: v.rowIndex,
+        email: v.email,
+        key: v.email ?? nameKey(v.first_name, v.last_name, v.phone!),
+      });
       continue;
     }
 
     const fields: Partial<Insertable> = {};
+    // Matched by name+phone and the import supplies an email the row lacks:
+    // fill it in. Safe against the unique index because a row with this email
+    // was already ruled out by the email lookup above.
+    if (!existing.email && v.email) fields.email = v.email;
     if (!existing.first_name && v.first_name) fields.first_name = v.first_name;
     if (!existing.last_name && v.last_name) fields.last_name = v.last_name;
     // Phone: the source of truth wins. Update whenever the import provides
@@ -238,18 +324,28 @@ export async function processMasterContactsCsv(
       const { data: inserted, error: insertError } = await supabase
         .from('master_contacts')
         .insert(toInsert)
-        .select('id, email');
+        .select('id, email, first_name, last_name, phone');
       if (insertError) {
         throw new Error(`Failed to insert master_contacts: ${insertError.message}`);
       }
-      const idByEmail = new Map(
-        (inserted ?? []).map((r) => [r.email as string, r.id as string])
+      // Keyed the same way insertMeta is, so phone-only rows (no email to key
+      // on) still resolve to their new id without relying on RETURNING order.
+      const idByKey = new Map(
+        (inserted ?? []).map((r) => [
+          (r.email as string | null) ??
+            nameKey(
+              (r.first_name as string) ?? '',
+              (r.last_name as string) ?? '',
+              (r.phone as string) ?? ''
+            ),
+          r.id as string,
+        ])
       );
       for (const meta of insertMeta) {
         outcomes.push({
           rowIndex: meta.rowIndex,
           status: 'added',
-          masterContactId: idByEmail.get(meta.email),
+          masterContactId: idByKey.get(meta.key),
           email: meta.email,
         });
       }

@@ -105,7 +105,8 @@ export interface MasterContact {
   id: string;
   first_name: string;
   last_name: string;
-  email: string;
+  /** Optional: phone-only contacts (SMS-first invite lists) have no email. */
+  email: string | null;
   phone: string | null;
   sms_opt_in_event_updates: boolean;
   sms_opt_in_marketing: boolean;

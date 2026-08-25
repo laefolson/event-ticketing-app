@@ -205,7 +205,7 @@ export function ContactsManager({
         return (
           m.first_name.toLowerCase().includes(q) ||
           m.last_name.toLowerCase().includes(q) ||
-          m.email.toLowerCase().includes(q) ||
+          (m.email !== null && m.email.toLowerCase().includes(q)) ||
           (m.phone !== null && m.phone.includes(q))
         );
       });
@@ -227,7 +227,7 @@ export function ContactsManager({
     setForm({
       first_name: contact.master_contacts.first_name,
       last_name: contact.master_contacts.last_name,
-      email: contact.master_contacts.email,
+      email: contact.master_contacts.email ?? '',
       phone: contact.master_contacts.phone ?? '',
       invitation_channel: contact.invitation_channel,
     });
@@ -265,8 +265,8 @@ export function ContactsManager({
   function openCreateTicket(contact: ContactWithMaster) {
     const m = contact.master_contacts;
     setCreateTicketPrefill({
-      name: `${m.first_name} ${m.last_name}`.trim() || m.email,
-      email: m.email,
+      name: `${m.first_name} ${m.last_name}`.trim() || m.email || m.phone || 'Guest',
+      email: m.email ?? '',
       phone: m.phone ?? '',
     });
     setCreateTicketOpen(true);

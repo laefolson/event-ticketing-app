@@ -60,7 +60,7 @@ export function ContactDetail({
   const [form, setForm] = useState({
     first_name: contact.first_name,
     last_name: contact.last_name,
-    email: contact.email,
+    email: contact.email ?? '',
     phone: contact.phone ?? '',
     sms_opt_in_event_updates: contact.sms_opt_in_event_updates,
     sms_opt_in_marketing: contact.sms_opt_in_marketing,
@@ -80,7 +80,7 @@ export function ContactDetail({
       // Unique-email collision is the trigger for the merge flow: the
       // admin is effectively saying "this contact is actually that one."
       if (res.error?.toLowerCase().includes('email already exists')) {
-        const lookup = await findMasterByEmail(form.email);
+        const lookup = await findMasterByEmail(form.email.trim());
         if (!lookup.success || !lookup.data || lookup.data.id === contact.id) {
           toast.error(res.error ?? 'Failed to update contact');
           return;
@@ -162,8 +162,8 @@ export function ContactDetail({
               <Input
                 id="email"
                 type="email"
-                required
                 value={form.email}
+                placeholder="Optional for phone-only contacts"
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
               />
             </div>
