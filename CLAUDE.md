@@ -120,6 +120,8 @@ npx tsc --noEmit  # Type check
 
 See `.env.local`. Public vars prefixed with `NEXT_PUBLIC_`. Server-only keys: `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_MESSAGING_SERVICE_SID`.
 
+**Email in development**: `sendEmail` suppresses live Resend calls whenever `NODE_ENV !== 'production'`, so running the app locally can't email real guests or burn quota. It logs `[email:dev-skip] …` and returns success so dependent flows behave normally. Override with `EMAIL_DEV_SEND=true` (send everything) or `EMAIL_DEV_ALLOWLIST=you@example.com` (send only to listed addresses). Twilio SMS has no equivalent guard yet — `sendSms` still dials out in dev.
+
 ## Current Status
 
 **Phase 1 is fully implemented.** All routes in `SPEC.md` §6 are built:
