@@ -12,6 +12,7 @@ import { EventUpdateEmail } from '@/emails/event-update-email';
 import { OrderCancelledEmail } from '@/emails/order-cancelled-email';
 import { syncMasterContactFromCheckout } from '@/lib/checkout-master-sync';
 import { getVenueName } from '@/lib/settings';
+import { RSVP_GUEST_NOTES_MAX_LENGTH } from '@/lib/rsvp';
 import { formatDate, formatCents, getBaseUrl, generateTicketCode } from '@/lib/utils';
 import { generateQrDataUrl } from '@/lib/qr';
 import type { ActionResponse } from '@/types/actions';
@@ -1477,6 +1478,163 @@ export async function cancelTicket(
       stripeRefunded,
       guestNotified,
       releasedToPublic: v.releaseToPublic,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Edit an existing attendee's details.
+// ---------------------------------------------------------------------------
+
+const updateTicketSchema = z.object({
+  ticketId: z.string().uuid('Invalid ticket'),
+  attendee_name: z.string().min(1, 'Name is required').max(500),
+  attendee_email: z
+    .string()
+    .email('Invalid email address')
+    .or(z.literal(''))
+    .nullable()
+    .transform((v) => v || null),
+  attendee_phone: z
+    .string()
+    .max(30, 'Phone number too long')
+    .nullable()
+    .refine((v) => isValidPhone(v), PHONE_VALIDATION_MESSAGE)
+    .transform((v) => v || null),
+  quantity: z
+    .number()
+    .int()
+    .min(1, 'Quantity must be at least 1')
+    .max(1000, 'Quantity looks unreasonable'),
+  guest_notes: z
+    .string()
+    .max(RSVP_GUEST_NOTES_MAX_LENGTH, 'Notes are too long')
+    .nullable()
+    .transform((v) => (v && v.trim() ? v.trim() : null)),
+});
+
+export type UpdateTicketInput = z.infer<typeof updateTicketSchema>;
+
+export interface UpdateTicketResult {
+  /** Signed change in seats, so the caller can describe what happened. */
+  quantityDelta: number;
+  /** Amount paid was left alone even though the seat count moved. */
+  paymentUnchanged: boolean;
+}
+
+/**
+ * Edit an attendee row in place. Used when a guest RSVPs with the wrong
+ * details — a party of 15 that should have been 5, a typo'd phone.
+ *
+ * Inventory is the delicate part: `quantity_sold` tracks the SUM of ticket
+ * quantities, so any change here has to move it by the same delta. The
+ * adjust_quantity_sold RPC clamps to [0, quantity_total] instead of failing,
+ * so an increase past capacity would silently under-count and drift the tier
+ * out of step with its tickets. Capacity is therefore checked here first.
+ *
+ * Money is deliberately untouched: changing seat count does not recompute
+ * amount_paid_cents. Refunding or collecting the difference is a separate,
+ * explicit decision (Cancel/Refund, or a Venmo request out of band).
+ */
+export async function updateTicketDetails(
+  input: UpdateTicketInput
+): Promise<ActionResponse<UpdateTicketResult>> {
+  const parsed = updateTicketSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
+  }
+  const v = parsed.data;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'You must be logged in.' };
+  }
+
+  const service = createServiceClient();
+
+  const { data: ticket, error: fetchError } = await service
+    .from('tickets')
+    .select('id, event_id, tier_id, quantity, status, amount_paid_cents')
+    .eq('id', v.ticketId)
+    .single();
+  if (fetchError || !ticket) {
+    return { success: false, error: 'Ticket not found.' };
+  }
+  if (ticket.status !== 'confirmed' && ticket.status !== 'checked_in') {
+    return {
+      success: false,
+      error: `Only confirmed or checked-in tickets can be edited (this one is ${ticket.status}).`,
+    };
+  }
+
+  const delta = v.quantity - (ticket.quantity as number);
+
+  // Growing the party has to fit in the tier. Shrinking always does.
+  if (delta > 0) {
+    const { data: tier, error: tierFetchError } = await service
+      .from('ticket_tiers')
+      .select('name, quantity_total, quantity_sold')
+      .eq('id', ticket.tier_id)
+      .single();
+    if (tierFetchError || !tier) {
+      return { success: false, error: 'Could not read tier capacity.' };
+    }
+    const remaining = (tier.quantity_total as number) - (tier.quantity_sold as number);
+    if (delta > remaining) {
+      return {
+        success: false,
+        error:
+          `Only ${remaining} seat${remaining === 1 ? '' : 's'} left in ${tier.name}. ` +
+          `Raising this booking to ${v.quantity} needs ${delta}.`,
+      };
+    }
+  }
+
+  const { error: updateError } = await service
+    .from('tickets')
+    .update({
+      attendee_name: v.attendee_name.trim(),
+      attendee_email: v.attendee_email,
+      attendee_phone: normalizePhone(v.attendee_phone),
+      quantity: v.quantity,
+      guest_notes: v.guest_notes,
+    })
+    .eq('id', ticket.id);
+  if (updateError) {
+    return { success: false, error: `Failed to update attendee: ${updateError.message}` };
+  }
+
+  // Inventory last, so a failed ticket update can't leave the tier adjusted
+  // for a change that never landed. If this fails the ticket is already
+  // saved, so surface it rather than swallowing — the tier needs fixing.
+  if (delta !== 0) {
+    const { error: tierError } = await service.rpc('adjust_quantity_sold', {
+      p_tier_id: ticket.tier_id,
+      p_delta: delta,
+    });
+    if (tierError) {
+      console.error(
+        `updateTicketDetails: tier ${ticket.tier_id} not adjusted by ${delta}:`,
+        tierError.message
+      );
+      return {
+        success: false,
+        error:
+          'Attendee saved, but the tier seat count could not be updated. ' +
+          'Check the tier before selling more.',
+      };
+    }
+  }
+
+  return {
+    success: true,
+    data: {
+      quantityDelta: delta,
+      paymentUnchanged: delta !== 0 && (ticket.amount_paid_cents as number) > 0,
     },
   };
 }

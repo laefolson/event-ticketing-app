@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, CheckCircle2, Undo2, Download, Check, Minus, AlertTriangle, Send, Megaphone, Mail, MessageSquare, Ban } from 'lucide-react';
+import { Search, CheckCircle2, Undo2, Download, Check, Minus, AlertTriangle, Send, Megaphone, Mail, MessageSquare, Ban, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatPrice } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
@@ -35,7 +35,7 @@ import {
 import { toast } from 'sonner';
 import { ScanDialog } from './scan-dialog';
 import { PendingVenmoPanel } from './pending-venmo-panel';
-import { toggleCheckIn, resendTickets, sendEventUpdates, cancelTicket } from './actions';
+import { toggleCheckIn, resendTickets, sendEventUpdates, cancelTicket, updateTicketDetails } from './actions';
 import type {
   EventUpdateScope,
   EventUpdateChannelMode,
@@ -124,6 +124,11 @@ export function AttendeesManager({
   // records a refund. releaseToPublic defaults OFF so a sold-out event
   // stays sold out and the seat is handed out from the waitlist instead.
   const [cancelTarget, setCancelTarget] = useState<TicketWithTier | null>(null);
+  const [editTarget, setEditTarget] = useState<TicketWithTier | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: '', email: '', phone: '', quantity: 1, notes: '',
+  });
+  const [editError, setEditError] = useState<string | null>(null);
   const [cancelForm, setCancelForm] = useState<{
     refundChannel: 'none' | RefundMethod;
     refundAmount: string;
@@ -140,6 +145,7 @@ export function AttendeesManager({
     notifyGuest: false,
   });
   const [cancelPending, startCancel] = useTransition();
+  const [editPending, startEdit] = useTransition();
 
   // Event Update dialog state — broadcasts a custom subject + body to
   // confirmed/checked-in ticket holders. Dedupes per email server-side
@@ -495,6 +501,56 @@ export function AttendeesManager({
     setCancelTarget(null);
   }
 
+  function openEdit(ticket: TicketWithTier) {
+    setEditTarget(ticket);
+    setEditError(null);
+    setEditForm({
+      name: ticket.attendee_name,
+      email: ticket.attendee_email ?? '',
+      phone: ticket.attendee_phone ?? '',
+      quantity: ticket.quantity,
+      notes: ticket.guest_notes ?? '',
+    });
+  }
+
+  function closeEdit() {
+    if (editPending) return;
+    setEditTarget(null);
+    setEditError(null);
+  }
+
+  function handleEditSubmit() {
+    if (!editTarget) return;
+    setEditError(null);
+    startEdit(async () => {
+      const res = await updateTicketDetails({
+        ticketId: editTarget.id,
+        attendee_name: editForm.name,
+        attendee_email: editForm.email.trim() || null,
+        attendee_phone: editForm.phone.trim() || null,
+        quantity: editForm.quantity,
+        guest_notes: editForm.notes.trim() || null,
+      });
+      if (!res.success) {
+        setEditError(res.error ?? 'Could not save changes.');
+        return;
+      }
+      const delta = res.data?.quantityDelta ?? 0;
+      toast.success(
+        delta === 0
+          ? 'Attendee updated'
+          : `Attendee updated — ${delta > 0 ? '+' : ''}${delta} seat${
+              Math.abs(delta) === 1 ? '' : 's'
+            }`
+      );
+      if (res.data?.paymentUnchanged) {
+        toast.warning('Seat count changed but the amount paid was not — settle any difference separately.');
+      }
+      setEditTarget(null);
+      router.refresh();
+    });
+  }
+
   function handleCancelSubmit() {
     if (!cancelTarget) return;
     const isRefund = cancelForm.refundChannel !== 'none';
@@ -806,6 +862,19 @@ export function AttendeesManager({
                                   <Button
                                     variant="ghost"
                                     size="sm"
+                                    onClick={() => openEdit(ticket)}
+                                    aria-label="Edit attendee"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Edit attendee</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
                                     onClick={() => openResend(ticket)}
                                     disabled={
                                       !ticket.attendee_email && !ticket.attendee_phone
@@ -953,6 +1022,115 @@ export function AttendeesManager({
               }
             >
               {resendPending ? 'Sending…' : 'Send'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Attendee Dialog */}
+      <Dialog open={editTarget !== null} onOpenChange={(o) => !o && closeEdit()}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit attendee</DialogTitle>
+            <DialogDescription>
+              {editTarget && (
+                <>
+                  Correcting <strong>{editTarget.attendee_name}</strong> on{' '}
+                  {editTarget.ticket_tiers?.name ?? 'ticket'}. Changing the party
+                  size adjusts the tier&rsquo;s seat count too.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {editTarget && (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-name">Name</Label>
+                <Input
+                  id="edit-name"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-quantity">Party size</Label>
+                <Input
+                  id="edit-quantity"
+                  type="number"
+                  min={1}
+                  value={editForm.quantity}
+                  onChange={(e) =>
+                    setEditForm((f) => ({
+                      ...f,
+                      quantity: Math.max(1, Number(e.target.value) || 1),
+                    }))
+                  }
+                />
+                {editForm.quantity !== editTarget.quantity && (
+                  <p className="text-xs text-muted-foreground">
+                    {editTarget.quantity} &rarr; {editForm.quantity} (
+                    {editForm.quantity > editTarget.quantity ? '+' : ''}
+                    {editForm.quantity - editTarget.quantity} seat
+                    {Math.abs(editForm.quantity - editTarget.quantity) === 1 ? '' : 's'})
+                    {editTarget.amount_paid_cents > 0 && (
+                      <>
+                        {' '}&middot; amount paid stays{' '}
+                        {formatPrice(editTarget.amount_paid_cents)} &mdash; settle any
+                        difference separately.
+                      </>
+                    )}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-email">Email</Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                  placeholder="Optional"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-phone">Phone</Label>
+                <Input
+                  id="edit-phone"
+                  type="tel"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                  placeholder="Optional"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-notes">Guest notes</Label>
+                <Textarea
+                  id="edit-notes"
+                  rows={3}
+                  value={editForm.notes}
+                  onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+                  placeholder="Who else is attending"
+                />
+              </div>
+
+              {editError && <p className="text-sm text-destructive">{editError}</p>}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={closeEdit} disabled={editPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleEditSubmit}
+              disabled={editPending || !editForm.name.trim()}
+            >
+              {editPending ? 'Saving…' : 'Save changes'}
             </Button>
           </DialogFooter>
         </DialogContent>
