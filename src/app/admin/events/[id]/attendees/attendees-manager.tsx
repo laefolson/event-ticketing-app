@@ -190,7 +190,10 @@ export function AttendeesManager({
     return tickets.filter(
       (t) =>
         t.attendee_name.toLowerCase().includes(q) ||
-        (t.attendee_email && t.attendee_email.toLowerCase().includes(q))
+        (t.attendee_email && t.attendee_email.toLowerCase().includes(q)) ||
+        // Guest notes list the rest of the party, so check-in can find
+        // someone by a name that isn't on the ticket itself.
+        (t.guest_notes && t.guest_notes.toLowerCase().includes(q))
     );
   }, [tickets, search]);
 
@@ -267,7 +270,8 @@ export function AttendeesManager({
   // CSV export
   function handleExportCsv() {
     const headers = [
-      'Name', 'Email', 'Phone', 'Tier', 'Qty', 'Amount Paid', 'Payment Method', 'Payment Note',
+      'Name', 'Email', 'Phone', 'Tier', 'Qty', 'Guest Notes', 'Amount Paid',
+      'Payment Method', 'Payment Note',
       'Source', 'Status', 'Purchased', 'SMS Event Opt-In', 'SMS Marketing Opt-In',
     ];
     const rows = tickets.map((t) => [
@@ -276,6 +280,7 @@ export function AttendeesManager({
       escapeCsvValue(t.attendee_phone ?? ''),
       escapeCsvValue(t.ticket_tiers?.name ?? ''),
       String(t.quantity),
+      escapeCsvValue(t.guest_notes ?? ''),
       formatPrice(t.amount_paid_cents),
       escapeCsvValue(paymentMethodLabel(t.payment_method)),
       escapeCsvValue(t.payment_note ?? ''),
@@ -701,6 +706,14 @@ export function AttendeesManager({
                         </TableCell>
                         <TableCell className="font-medium">
                           {ticket.attendee_name}
+                          {ticket.guest_notes && (
+                            <div
+                              className="text-xs font-normal text-muted-foreground whitespace-pre-line"
+                              title={ticket.guest_notes}
+                            >
+                              {ticket.guest_notes}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           {ticket.attendee_email ? (

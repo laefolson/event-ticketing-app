@@ -10,6 +10,7 @@ import { getVenueName } from '@/lib/settings';
 import { generateTicketCode, formatDate } from '@/lib/utils';
 import { syncMasterContactFromCheckout } from '@/lib/checkout-master-sync';
 import { isValidPhone, normalizePhone, PHONE_VALIDATION_MESSAGE } from '@/lib/phone';
+import { guestNotesLabel, RSVP_GUEST_NOTES_MAX_LENGTH } from '@/lib/rsvp';
 import type { ActionResponse } from '@/types/actions';
 
 const rsvpSchema = z.object({
@@ -27,6 +28,10 @@ const rsvpSchema = z.object({
     .refine((v) => isValidPhone(v), PHONE_VALIDATION_MESSAGE)
     .transform((v) => v || null),
   quantity: z.number().int().min(1, 'Quantity must be at least 1'),
+  guest_notes: z
+    .string()
+    .max(RSVP_GUEST_NOTES_MAX_LENGTH, 'Your answer is too long')
+    .transform((v) => v.trim() || null),
   consent_event_updates: z.boolean(),
   consent_marketing: z.boolean(),
 });
@@ -50,6 +55,7 @@ export async function submitRsvp(
     attendee_email,
     attendee_phone: rawAttendeePhone,
     quantity,
+    guest_notes: rawGuestNotes,
     consent_event_updates,
     consent_marketing,
   } = parsed.data;
@@ -62,7 +68,7 @@ export async function submitRsvp(
   // Verify event exists, is published, and link is active
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id, slug, title, date_start, location_name, is_published, link_active')
+    .select('id, slug, title, date_start, location_name, is_published, link_active, rsvp_guest_notes_enabled, rsvp_guest_notes_label, rsvp_guest_notes_required')
     .eq('id', event_id)
     .eq('slug', slug)
     .eq('is_published', true)
@@ -71,6 +77,17 @@ export async function submitRsvp(
 
   if (eventError || !event) {
     return { success: false, error: 'Event not found or no longer available.' };
+  }
+
+  // Guest notes are only persisted when the event opts in — a stale or crafted
+  // payload can't write notes into an event that isn't collecting them.
+  const guest_notes = event.rsvp_guest_notes_enabled ? rawGuestNotes : null;
+
+  if (event.rsvp_guest_notes_enabled && event.rsvp_guest_notes_required && !guest_notes) {
+    return {
+      success: false,
+      error: `Please answer: ${guestNotesLabel(event.rsvp_guest_notes_label)}`,
+    };
   }
 
   // Verify tier exists, belongs to event, and is free
@@ -148,6 +165,7 @@ export async function submitRsvp(
       attendee_phone,
       ticket_code: generateTicketCode(),
       quantity,
+      guest_notes,
       amount_paid_cents: 0,
       status: 'confirmed',
       stripe_payment_intent_id: null,
@@ -184,6 +202,8 @@ export async function submitRsvp(
         tickets: [{ tierName: tier.name, quantity, ticketCode: ticket.ticket_code }],
         venueName,
         bannerText: event.location_name ?? venueName,
+        guestNotes: guest_notes,
+        guestNotesPrompt: event.rsvp_guest_notes_label,
       }),
     }).catch((err) => {
       console.error('Failed to send RSVP confirmation email:', err);

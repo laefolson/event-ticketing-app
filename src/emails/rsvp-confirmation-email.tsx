@@ -1,6 +1,7 @@
 import { Section, Text } from '@react-email/components';
 import * as React from 'react';
 import { BaseLayout } from './base-layout';
+import { guestNotesLabel } from '@/lib/rsvp';
 
 interface TicketLine {
   tierName: string;
@@ -16,6 +17,9 @@ interface RsvpConfirmationEmailProps {
   tickets: TicketLine[];
   venueName: string;
   bannerText?: string | null;
+  /** Guest's answer to the event's RSVP notes prompt, when the event collects one. */
+  guestNotes?: string | null;
+  guestNotesPrompt?: string | null;
 }
 
 export function RsvpConfirmationEmail({
@@ -26,6 +30,8 @@ export function RsvpConfirmationEmail({
   tickets,
   venueName,
   bannerText,
+  guestNotes,
+  guestNotesPrompt,
 }: RsvpConfirmationEmailProps) {
   return (
     <BaseLayout
@@ -48,6 +54,12 @@ export function RsvpConfirmationEmail({
           <>
             <Text style={detailLabel}>Location</Text>
             <Text style={detailValue}>{locationName}</Text>
+          </>
+        )}
+        {guestNotes && (
+          <>
+            <Text style={detailLabel}>{guestNotesLabel(guestNotesPrompt)}</Text>
+            <Text style={detailValue}>{guestNotes}</Text>
           </>
         )}
         <Text style={detailLabel}>Tickets</Text>

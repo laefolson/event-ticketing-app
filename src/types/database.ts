@@ -67,6 +67,9 @@ export interface Event {
   pass_service_fee: boolean;
   waitlist_enabled: boolean;
   waitlist_hold_hours: number;
+  rsvp_guest_notes_enabled: boolean;
+  rsvp_guest_notes_label: string | null;
+  rsvp_guest_notes_required: boolean;
   link_active: boolean;
   archived_at: string | null;
   created_by: string;
@@ -138,6 +141,8 @@ export interface Ticket {
   attendee_phone: string | null;
   ticket_code: string;
   quantity: number;
+  /** Free-text answer to the event's RSVP guest-notes prompt, when enabled. */
+  guest_notes: string | null;
   stripe_payment_intent_id: string | null;
   stripe_session_id: string | null;
   amount_paid_cents: number;

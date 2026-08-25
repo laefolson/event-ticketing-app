@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/dialog';
 import { ImageUpload } from '@/components/image-upload';
 import { updateEvent, deleteEvent } from './actions';
+import { DEFAULT_RSVP_GUEST_NOTES_LABEL } from '@/lib/rsvp';
 import type { Event, EventType } from '@/types/database';
 
 const EVENT_TYPE_OPTIONS: { value: EventType; label: string }[] = [
@@ -78,6 +79,9 @@ interface FormData {
   venmo_enabled: boolean;
   venmo_handle: string;
   pass_service_fee: boolean;
+  rsvp_guest_notes_enabled: boolean;
+  rsvp_guest_notes_label: string;
+  rsvp_guest_notes_required: boolean;
   video_url: string;
 }
 
@@ -111,6 +115,9 @@ export function EditEventForm({ event }: EditEventFormProps) {
     venmo_enabled: event.venmo_enabled,
     venmo_handle: event.venmo_handle ?? '@Anne-Olson-24',
     pass_service_fee: event.pass_service_fee,
+    rsvp_guest_notes_enabled: event.rsvp_guest_notes_enabled,
+    rsvp_guest_notes_label: event.rsvp_guest_notes_label ?? '',
+    rsvp_guest_notes_required: event.rsvp_guest_notes_required,
     video_url: event.video_url ?? '',
   });
   const [error, setError] = useState<string | null>(null);
@@ -197,6 +204,9 @@ export function EditEventForm({ event }: EditEventFormProps) {
       venmo_enabled: formData.venmo_enabled,
       venmo_handle: formData.venmo_handle.trim() || '@Anne-Olson-24',
       pass_service_fee: formData.pass_service_fee,
+      rsvp_guest_notes_enabled: formData.rsvp_guest_notes_enabled,
+      rsvp_guest_notes_label: formData.rsvp_guest_notes_label.trim() || null,
+      rsvp_guest_notes_required: formData.rsvp_guest_notes_required,
       video_url: formData.video_url.trim() || null,
       publish,
     });
@@ -603,6 +613,67 @@ export function EditEventForm({ event }: EditEventFormProps) {
                   updateField('pass_service_fee', checked)
                 }
               />
+            </div>
+
+            {/* RSVP Guest Notes */}
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="rsvp_guest_notes_enabled">
+                    Ask who&rsquo;s attending on the RSVP form
+                  </Label>
+                  <p className="text-muted-foreground text-sm">
+                    Adds a free-text box to the RSVP form so one guest can list
+                    everyone they&rsquo;re bringing. Free events only — paid
+                    checkout is unaffected.
+                  </p>
+                </div>
+                <Switch
+                  id="rsvp_guest_notes_enabled"
+                  checked={formData.rsvp_guest_notes_enabled}
+                  onCheckedChange={(checked) =>
+                    updateField('rsvp_guest_notes_enabled', checked)
+                  }
+                />
+              </div>
+              {formData.rsvp_guest_notes_enabled && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="rsvp_guest_notes_label">
+                      Question shown to guests
+                    </Label>
+                    <Input
+                      id="rsvp_guest_notes_label"
+                      value={formData.rsvp_guest_notes_label}
+                      onChange={(e) =>
+                        updateField('rsvp_guest_notes_label', e.target.value)
+                      }
+                      placeholder={DEFAULT_RSVP_GUEST_NOTES_LABEL}
+                      maxLength={200}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Leave blank to use &ldquo;{DEFAULT_RSVP_GUEST_NOTES_LABEL}&rdquo;.
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="rsvp_guest_notes_required">
+                        Require an answer
+                      </Label>
+                      <p className="text-muted-foreground text-sm">
+                        Guests can&rsquo;t submit the RSVP without filling it in.
+                      </p>
+                    </div>
+                    <Switch
+                      id="rsvp_guest_notes_required"
+                      checked={formData.rsvp_guest_notes_required}
+                      onCheckedChange={(checked) =>
+                        updateField('rsvp_guest_notes_required', checked)
+                      }
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
             {error && (
