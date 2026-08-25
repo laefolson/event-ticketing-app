@@ -33,7 +33,8 @@ interface StagedContact {
   id: string;
   first_name: string;
   last_name: string;
-  email: string;
+  /** Null for phone-only contacts. */
+  email: string | null;
   addedBy: AddedBy;
 }
 
@@ -43,8 +44,13 @@ interface AddFromMasterSheetProps {
   pastContributors: string[];
 }
 
-function displayName(c: { first_name: string; last_name: string; email: string }) {
-  return `${c.first_name} ${c.last_name}`.trim() || c.email;
+function displayName(c: {
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone?: string | null;
+}) {
+  return `${c.first_name} ${c.last_name}`.trim() || c.email || c.phone || 'Unnamed contact';
 }
 
 export function AddFromMasterSheet({ eventId, priorEvents, pastContributors }: AddFromMasterSheetProps) {
@@ -515,7 +521,7 @@ function ResultsList({
                     {displayName(c)}
                   </div>
                   <div className="text-xs text-muted-foreground truncate flex items-center gap-2">
-                    <span>{c.email}</span>
+                    <span>{c.email ?? c.phone ?? '\u2014'}</span>
                     {c.phone && <span>· {c.phone}</span>}
                     <span>· {c.eventCount} event{c.eventCount === 1 ? '' : 's'}</span>
                   </div>

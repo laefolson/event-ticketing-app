@@ -94,8 +94,8 @@ export function AddContactSheet() {
               <Input
                 id="email"
                 type="email"
-                required
                 value={form.email}
+                placeholder="Optional for phone-only contacts"
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
               />
             </div>

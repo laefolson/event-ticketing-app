@@ -103,7 +103,7 @@ export function ImportCsvDialog({ pastContributors }: ImportCsvDialogProps) {
           return;
         }
         const headers = parsed.meta.fields ?? [];
-        const missing = ['first_name', 'last_name', 'email'].filter((h) => !headers.includes(h));
+        const missing = ['first_name', 'last_name'].filter((h) => !headers.includes(h));
         if (missing.length > 0) {
           setError(
             `CSV is missing required column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}. ` +
@@ -238,12 +238,14 @@ export function ImportCsvDialog({ pastContributors }: ImportCsvDialogProps) {
 
             <div className="text-muted-foreground rounded-md border p-3 text-xs leading-relaxed">
               <p className="mb-1 font-medium text-foreground">Expected columns:</p>
-              <p><strong>first_name</strong>, <strong>last_name</strong>, <strong>email</strong> (required)</p>
-              <p><strong>phone</strong> (optional)</p>
+              <p><strong>first_name</strong>, <strong>last_name</strong> (required columns)</p>
+              <p><strong>email</strong>, <strong>phone</strong> &mdash; each row needs at least one</p>
               <p><strong>sms_opt_in</strong> (optional: true/false/yes/no/1/0)</p>
               <p className="mt-1">
-                Existing contacts are matched by email (case-insensitive). Opt-in
-                flags are never downgraded to false from CSV.
+                Existing contacts are matched by email (case-insensitive). Rows
+                with no email are matched on name&nbsp;+&nbsp;phone instead, so
+                re-importing the same phone-only list updates rather than
+                duplicates. Opt-in flags are never downgraded to false from CSV.
               </p>
             </div>
 

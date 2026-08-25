@@ -18,8 +18,14 @@ const channelEnum = z.enum(['email', 'sms', 'both', 'none']);
 
 const contactSchema = z.object({
   first_name: z.string().min(1, 'First name is required').max(200),
-  last_name: z.string().min(1, 'Last name is required').max(200),
-  email: z.string().email('Valid email is required').trim().toLowerCase(),
+  last_name: z.string().max(200).default(''),
+  email: z
+    .string()
+    .email('Valid email is required')
+    .trim()
+    .toLowerCase()
+    .or(z.literal(''))
+    .transform((v) => v || null),
   phone: z
     .string()
     .max(30, 'Phone number too long')
@@ -830,7 +836,8 @@ export interface PickableMasterContact {
   id: string;
   first_name: string;
   last_name: string;
-  email: string;
+  /** Null for phone-only contacts. */
+  email: string | null;
   phone: string | null;
   sms_opt_in_event_updates: boolean;
   sms_opt_in_marketing: boolean;
@@ -845,7 +852,7 @@ async function attachAlreadyInEventFlags(
     id: string;
     first_name: string;
     last_name: string;
-    email: string;
+    email: string | null;
     phone: string | null;
     sms_opt_in_event_updates: boolean;
     sms_opt_in_marketing: boolean;
