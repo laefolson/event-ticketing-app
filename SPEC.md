@@ -905,6 +905,8 @@ All email templates built in **Resend React Email** format. Must be responsive a
 | `RESEND_API_KEY` | |
 | `RESEND_FROM_EMAIL` | Verified sender, e.g. `events@yourdomain.com` |
 | `RESEND_WEBHOOK_SECRET` | Svix signing secret from Resend webhook config |
+| `EMAIL_DEV_SEND` | Optional. Outside production `sendEmail` suppresses live sends by default so local work can't email real guests. Set to `true` to send for real. |
+| `EMAIL_DEV_ALLOWLIST` | Optional. Comma-separated addresses that still receive real mail when live sends are suppressed. Matching is case- and whitespace-insensitive. |
 | `TWILIO_ACCOUNT_SID` | |
 | `TWILIO_AUTH_TOKEN` | |
 | `TWILIO_MESSAGING_SERVICE_SID` | |
