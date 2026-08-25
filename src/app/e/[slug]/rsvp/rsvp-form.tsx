@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -16,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { submitRsvp } from './actions';
+import { guestNotesLabel, RSVP_GUEST_NOTES_MAX_LENGTH } from '@/lib/rsvp';
 import type { TicketTier } from '@/types/database';
 
 interface RsvpFormProps {
@@ -23,9 +25,20 @@ interface RsvpFormProps {
   slug: string;
   tiers: TicketTier[];
   venueName: string;
+  guestNotesEnabled: boolean;
+  guestNotesLabel: string | null;
+  guestNotesRequired: boolean;
 }
 
-export function RsvpForm({ eventId, slug, tiers, venueName }: RsvpFormProps) {
+export function RsvpForm({
+  eventId,
+  slug,
+  tiers,
+  venueName,
+  guestNotesEnabled,
+  guestNotesLabel: guestNotesLabelProp,
+  guestNotesRequired,
+}: RsvpFormProps) {
   const router = useRouter();
 
   const availableTiers = tiers.filter((t) => t.quantity_sold < t.quantity_total);
@@ -38,6 +51,7 @@ export function RsvpForm({ eventId, slug, tiers, venueName }: RsvpFormProps) {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [quantity, setQuantity] = useState(1);
+  const [guestNotes, setGuestNotes] = useState('');
   const [consentEventUpdates, setConsentEventUpdates] = useState(false);
   const [consentMarketing, setConsentMarketing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +69,7 @@ export function RsvpForm({ eventId, slug, tiers, venueName }: RsvpFormProps) {
     : 1;
   const showTierSelect = tiers.length > 1;
   const showQuantity = maxQty > 1;
+  const notesLabel = guestNotesLabel(guestNotesLabelProp);
 
   if (allSoldOut) {
     return (
@@ -80,6 +95,11 @@ export function RsvpForm({ eventId, slug, tiers, venueName }: RsvpFormProps) {
       return;
     }
 
+    if (guestNotesEnabled && guestNotesRequired && !guestNotes.trim()) {
+      setError(`Please answer: ${notesLabel}`);
+      return;
+    }
+
     setSubmitting(true);
 
     const result = await submitRsvp(slug, {
@@ -89,6 +109,7 @@ export function RsvpForm({ eventId, slug, tiers, venueName }: RsvpFormProps) {
       attendee_email: email,
       attendee_phone: phone,
       quantity,
+      guest_notes: guestNotesEnabled ? guestNotes : '',
       consent_event_updates: consentEventUpdates,
       consent_marketing: consentMarketing,
     });
@@ -138,6 +159,46 @@ export function RsvpForm({ eventId, slug, tiers, venueName }: RsvpFormProps) {
           placeholder="Your full name"
         />
       </div>
+
+      {/* Party size — kept next to the guest-notes prompt so "how many" and
+          "who" read as one question, rather than being split by the SMS
+          consent copy further down. */}
+      {showQuantity && (
+        <div className="space-y-2">
+          <Label htmlFor="quantity">How many are attending? (max {maxQty})</Label>
+          <Input
+            id="quantity"
+            type="number"
+            min={1}
+            max={maxQty}
+            value={quantity}
+            onChange={(e) => setQuantity(Math.max(1, Math.min(maxQty, Number(e.target.value))))}
+          />
+        </div>
+      )}
+
+      {/* Guest notes — per-event opt-in */}
+      {guestNotesEnabled && (
+        <div className="space-y-2">
+          <Label htmlFor="guest_notes">
+            {notesLabel}
+            {guestNotesRequired ? (
+              <span className="text-destructive"> *</span>
+            ) : (
+              <span className="text-muted-foreground font-normal"> (optional)</span>
+            )}
+          </Label>
+          <Textarea
+            id="guest_notes"
+            rows={3}
+            required={guestNotesRequired}
+            maxLength={RSVP_GUEST_NOTES_MAX_LENGTH}
+            value={guestNotes}
+            onChange={(e) => setGuestNotes(e.target.value)}
+            placeholder="e.g. Jane Smith, plus Emma (8) and Noah (5)"
+          />
+        </div>
+      )}
 
       {/* Email */}
       <div className="space-y-2">
@@ -235,21 +296,6 @@ export function RsvpForm({ eventId, slug, tiers, venueName }: RsvpFormProps) {
               Privacy Policy
             </a>
           </p>
-        </div>
-      )}
-
-      {/* Quantity */}
-      {showQuantity && (
-        <div className="space-y-2">
-          <Label htmlFor="quantity">Quantity (max {maxQty})</Label>
-          <Input
-            id="quantity"
-            type="number"
-            min={1}
-            max={maxQty}
-            value={quantity}
-            onChange={(e) => setQuantity(Math.max(1, Math.min(maxQty, Number(e.target.value))))}
-          />
         </div>
       )}
 

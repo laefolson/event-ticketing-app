@@ -39,7 +39,15 @@ export default async function RSVPPage({ params }: RSVPPageProps) {
         Reserve your free tickets below.
       </p>
 
-      <RsvpForm eventId={event.id} slug={slug} tiers={tiers} venueName={venueName} />
+      <RsvpForm
+        eventId={event.id}
+        slug={slug}
+        tiers={tiers}
+        venueName={venueName}
+        guestNotesEnabled={event.rsvp_guest_notes_enabled}
+        guestNotesLabel={event.rsvp_guest_notes_label}
+        guestNotesRequired={event.rsvp_guest_notes_required}
+      />
     </div>
   );
 }

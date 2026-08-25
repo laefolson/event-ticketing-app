@@ -48,6 +48,9 @@ const updateEventSchema = z
     venmo_enabled: z.boolean().optional(),
     venmo_handle: z.string().max(100).optional(),
     pass_service_fee: z.boolean().optional(),
+    rsvp_guest_notes_enabled: z.boolean().optional(),
+    rsvp_guest_notes_label: z.string().max(200).nullable().optional(),
+    rsvp_guest_notes_required: z.boolean().optional(),
     publish: z.boolean(),
   })
   .superRefine((data, ctx) => {
@@ -94,6 +97,9 @@ export type UpdateEventInput = {
   venmo_enabled?: boolean;
   venmo_handle?: string;
   pass_service_fee?: boolean;
+  rsvp_guest_notes_enabled?: boolean;
+  rsvp_guest_notes_label?: string | null;
+  rsvp_guest_notes_required?: boolean;
   publish: boolean;
 };
 
