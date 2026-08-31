@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Minus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,6 +29,16 @@ interface RsvpFormProps {
   guestNotesEnabled: boolean;
   guestNotesLabel: string | null;
   guestNotesRequired: boolean;
+}
+
+/**
+ * Seats one guest may reserve: whichever binds first, the tier's remaining
+ * stock or its per-guest cap. Returns 1 when no tier is selected yet.
+ */
+function maxQtyForTier(tier: TicketTier | undefined): number {
+  if (!tier) return 1;
+  const remaining = tier.quantity_total - tier.quantity_sold;
+  return Math.min(remaining, tier.max_per_contact ?? remaining);
 }
 
 export function RsvpForm({
@@ -58,15 +69,7 @@ export function RsvpForm({
   const [submitting, setSubmitting] = useState(false);
 
   const selectedTier = tiers.find((t) => t.id === selectedTierId);
-  const remaining = selectedTier
-    ? selectedTier.quantity_total - selectedTier.quantity_sold
-    : 0;
-  const maxQty = selectedTier
-    ? Math.min(
-        remaining,
-        selectedTier.max_per_contact ?? remaining
-      )
-    : 1;
+  const maxQty = maxQtyForTier(selectedTier);
   const showTierSelect = tiers.length > 1;
   const showQuantity = maxQty > 1;
   const notesLabel = guestNotesLabel(guestNotesLabelProp);
@@ -129,7 +132,14 @@ export function RsvpForm({
       {showTierSelect && (
         <div className="space-y-2">
           <Label htmlFor="tier">Ticket Type</Label>
-          <Select value={selectedTierId} onValueChange={setSelectedTierId}>
+          <Select
+            value={selectedTierId}
+            onValueChange={(id) => {
+              setSelectedTierId(id);
+              const nextMax = maxQtyForTier(tiers.find((t) => t.id === id));
+              setQuantity((q) => Math.min(Math.max(1, q), Math.max(1, nextMax)));
+            }}
+          >
             <SelectTrigger id="tier" className="w-full">
               <SelectValue placeholder="Select a ticket type" />
             </SelectTrigger>
@@ -165,15 +175,41 @@ export function RsvpForm({
           consent copy further down. */}
       {showQuantity && (
         <div className="space-y-2">
-          <Label htmlFor="quantity">How many are attending? (max {maxQty})</Label>
-          <Input
-            id="quantity"
-            type="number"
-            min={1}
-            max={maxQty}
-            value={quantity}
-            onChange={(e) => setQuantity(Math.max(1, Math.min(maxQty, Number(e.target.value))))}
-          />
+          <Label id="quantity-label">How many are attending? (max {maxQty})</Label>
+          <div
+            role="group"
+            aria-labelledby="quantity-label"
+            className="flex items-center gap-3"
+          >
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9"
+              aria-label="One fewer attendee"
+              disabled={quantity <= 1}
+              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <span
+              aria-live="polite"
+              className="w-8 text-center text-base font-medium tabular-nums"
+            >
+              {quantity}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9"
+              aria-label="One more attendee"
+              disabled={quantity >= maxQty}
+              onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       )}
 
